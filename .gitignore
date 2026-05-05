@@ -1,0 +1,8 @@
+.DS_Store
+NV5/*.dmg
+DerivedData/
+SourcePackages/
+*.xcodeproj/
+.build/
+NV5.xcodeproj/
+*.xcworkspace/

@@ -38,7 +38,7 @@ struct EditorColumn: View {
                 initialAttributes: note.bodyAttributes,
                 initialSelection: note.lastSelectedRange,
                 highlightQuery: coordinator.query,
-                focusTrigger: coordinator.focusTarget == .editor ? UUID() : nil,
+                focusRequest: coordinator.focusTarget == .editor,
                 onEscape: { coordinator.focusTarget = .searchField },
                 onCommit: { body, attrs, range in
                     Task {

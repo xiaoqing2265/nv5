@@ -56,7 +56,7 @@ struct NoteListColumn: View {
                 }
             }
         }
-        .task(id: refreshKey) { await refresh() }
+        .task(id: refreshKey) { refresh() }
         .onChange(of: coordinator.focusTarget) { _, new in
             searchFieldFocused = (new == .searchField)
         }
@@ -68,15 +68,15 @@ struct NoteListColumn: View {
     }
 
     private var refreshKey: String {
-        "\(coordinator.query)|\(selectedLabel ?? "")|\(coordinator.store?.notes.count ?? 0)"
+        "\(coordinator.query)|\(selectedLabel ?? "")"
     }
 
-    private func refresh() async {
+    private func refresh() {
         let base: [Note]
         if coordinator.query.isEmpty {
             base = coordinator.store?.notes ?? []
         } else {
-            base = (try? await coordinator.store?.search(query: coordinator.query)) ?? []
+            base = coordinator.store?.search(query: coordinator.query) ?? []
         }
         if let label = selectedLabel {
             filteredNotes = base.filter { $0.labels.contains(label) }
@@ -85,17 +85,12 @@ struct NoteListColumn: View {
         }
         
         if let currentID = coordinator.selectedNoteID {
-            // Check if the currently selected note still exists in the overall store
             let existsInStore = coordinator.store?.notes.contains(where: { $0.id == currentID }) ?? false
             
             if !existsInStore {
-                // Only if the note is gone (e.g. deleted), select the first available filtered note
                 coordinator.selectedNoteID = filteredNotes.first?.id
             }
-            // If it exists in store, we keep it selected to protect the Editor focus,
-            // even if it's not in the current search results (filteredNotes).
         } else {
-            // No selection yet, pick the first from filtered results
             coordinator.selectedNoteID = filteredNotes.first?.id
         }
     }

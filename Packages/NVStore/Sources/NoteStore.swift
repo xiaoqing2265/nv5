@@ -83,13 +83,11 @@ public final class NoteStore {
             )
             try toSave.save(db)
         }
-        await waitForNote(id: note.id)
-    }
 
-    private func waitForNote(id: UUID) async {
-        for _ in 0..<25 {
-            if notes.contains(where: { $0.id == id }) { return }
-            try? await Task.sleep(for: .milliseconds(10))
+        if let idx = notes.firstIndex(where: { $0.id == noteID }) {
+            notes[idx] = note
+        } else {
+            notes.insert(note, at: 0)
         }
     }
 
@@ -134,18 +132,30 @@ public final class NoteStore {
         }
     }
 
-    public func search(query: String) async throws -> [Note] {
-        guard !query.isEmpty else { return notes }
-        return try await database.writer.read { db in
-            let ftsQuery = query.split(separator: " ").map { "\"\($0)\"*" }.joined(separator: " ")
-            let sql = """
-                SELECT note.* FROM note
-                JOIN note_fts ON note.rowid = note_fts.rowid
-                WHERE note_fts MATCH ?
-                AND note.deletedLocally = 0
-                ORDER BY note.pinned DESC, note.modifiedAt DESC
-                """
-            return try Note.fetchAll(db, sql: sql, arguments: [ftsQuery])
+    public func search(query: String) -> [Note] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return notes }
+
+        let tokens = trimmed.split(separator: " ").map(String.init)
+
+        let matched = notes.filter { note in
+            tokens.allSatisfy { token in
+                note.title.range(of: token, options: .caseInsensitive) != nil
+                || note.body.range(of: token, options: .caseInsensitive) != nil
+                || note.labels.contains { $0.range(of: token, options: .caseInsensitive) != nil }
+            }
+        }
+
+        return matched.sorted { lhs, rhs in
+            if lhs.pinned != rhs.pinned { return lhs.pinned }
+            let lhsTitleHit = tokens.allSatisfy {
+                lhs.title.range(of: $0, options: .caseInsensitive) != nil
+            }
+            let rhsTitleHit = tokens.allSatisfy {
+                rhs.title.range(of: $0, options: .caseInsensitive) != nil
+            }
+            if lhsTitleHit != rhsTitleHit { return lhsTitleHit }
+            return lhs.modifiedAt > rhs.modifiedAt
         }
     }
 

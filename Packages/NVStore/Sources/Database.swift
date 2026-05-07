@@ -48,6 +48,10 @@ public final class Database {
             }
         }
 
+        migrator.registerMigration("v2") { db in
+            try db.execute(sql: "DROP TABLE IF EXISTS note_fts")
+        }
+
         try migrator.migrate(writer)
     }
 }

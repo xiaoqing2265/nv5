@@ -4,9 +4,19 @@ import NVModel
 struct NoteListColumn: View {
     @Environment(AppCoordinator.self) private var coordinator
     let selectedLabel: String?
-
-    @State private var filteredNotes: [Note] = []
     @FocusState private var searchFieldFocused: Bool
+
+    private var filteredNotes: [Note] {
+        let store = coordinator.store
+        let base: [Note]
+        if coordinator.query.isEmpty {
+            base = store?.notes ?? []
+        } else {
+            base = store?.search(query: coordinator.query) ?? []
+        }
+        guard let label = selectedLabel else { return base }
+        return base.filter { $0.labels.contains(label) }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -50,13 +60,24 @@ struct NoteListColumn: View {
             }
             .listStyle(.inset)
             .onDeleteCommand {
+                let notes = filteredNotes
                 if let id = coordinator.selectedNoteID,
-                   let note = filteredNotes.first(where: { $0.id == id }) {
+                   let note = notes.first(where: { $0.id == id }) {
                     delete(note)
                 }
             }
         }
-        .task(id: refreshKey) { refresh() }
+        .onChange(of: filteredNotes) { _, newNotes in
+            if let currentID = coordinator.selectedNoteID {
+                let existsInStore = coordinator.store?.notes
+                    .contains(where: { $0.id == currentID }) ?? false
+                if !existsInStore {
+                    coordinator.selectedNoteID = newNotes.first?.id
+                }
+            } else {
+                coordinator.selectedNoteID = newNotes.first?.id
+            }
+        }
         .onChange(of: coordinator.focusTarget) { _, new in
             searchFieldFocused = (new == .searchField)
         }
@@ -64,34 +85,6 @@ struct NoteListColumn: View {
             if new && coordinator.focusTarget != .searchField {
                 coordinator.focusTarget = .searchField
             }
-        }
-    }
-
-    private var refreshKey: String {
-        "\(coordinator.query)|\(selectedLabel ?? "")"
-    }
-
-    private func refresh() {
-        let base: [Note]
-        if coordinator.query.isEmpty {
-            base = coordinator.store?.notes ?? []
-        } else {
-            base = coordinator.store?.search(query: coordinator.query) ?? []
-        }
-        if let label = selectedLabel {
-            filteredNotes = base.filter { $0.labels.contains(label) }
-        } else {
-            filteredNotes = base
-        }
-        
-        if let currentID = coordinator.selectedNoteID {
-            let existsInStore = coordinator.store?.notes.contains(where: { $0.id == currentID }) ?? false
-            
-            if !existsInStore {
-                coordinator.selectedNoteID = filteredNotes.first?.id
-            }
-        } else {
-            coordinator.selectedNoteID = filteredNotes.first?.id
         }
     }
 
@@ -116,15 +109,16 @@ struct NoteListColumn: View {
         }
 
         // 优先级 2: 列表非空,激活虚拟选中项(当前选中或第一条)
-        if !filteredNotes.isEmpty {
-            let targetID = coordinator.selectedNoteID ?? filteredNotes.first?.id
+        let notes = filteredNotes
+        if !notes.isEmpty {
+            let targetID = coordinator.selectedNoteID ?? notes.first?.id
             if let id = targetID {
                 if coordinator.store?.notes.contains(where: { $0.id == id }) == true {
                     coordinator.selectedNoteID = id
                     coordinator.focusTarget = .editor
                     return
                 }
-                if let first = filteredNotes.first {
+                if let first = notes.first {
                     coordinator.selectedNoteID = first.id
                     coordinator.focusTarget = .editor
                     return
@@ -137,17 +131,17 @@ struct NoteListColumn: View {
         if !trimmed.isEmpty {
             Task {
                 _ = await coordinator.newNote()
-                await refresh()
             }
         }
         // 否则无操作(搜索词全是空白)
     }
 
     private func moveSelection(by delta: Int) {
-        guard !filteredNotes.isEmpty else { return }
-        let currentIndex = filteredNotes.firstIndex { $0.id == coordinator.selectedNoteID } ?? -1
-        let newIndex = max(0, min(filteredNotes.count - 1, currentIndex + delta))
-        coordinator.selectedNoteID = filteredNotes[newIndex].id
+        let notes = filteredNotes
+        guard !notes.isEmpty else { return }
+        let currentIndex = notes.firstIndex { $0.id == coordinator.selectedNoteID } ?? -1
+        let newIndex = max(0, min(notes.count - 1, currentIndex + delta))
+        coordinator.selectedNoteID = notes[newIndex].id
     }
 
     private func togglePin(_ note: Note) {

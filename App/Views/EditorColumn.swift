@@ -10,7 +10,6 @@ struct EditorColumn: View {
             if let id = coordinator.selectedNoteID,
                let note = coordinator.store?.notes.first(where: { $0.id == id }) {
                 editorView(for: note)
-                    .focused($editorFocused)
                     .onChange(of: coordinator.focusTarget) { _, new in
                         editorFocused = (new == .editor)
                     }
@@ -39,6 +38,7 @@ struct EditorColumn: View {
                 initialAttributes: note.bodyAttributes,
                 initialSelection: note.lastSelectedRange,
                 highlightQuery: coordinator.query,
+                focusTrigger: coordinator.focusTarget == .editor ? UUID() : nil,
                 onEscape: { coordinator.focusTarget = .searchField },
                 onCommit: { body, attrs, range in
                     Task {
@@ -48,6 +48,7 @@ struct EditorColumn: View {
                     }
                 }
             )
+            .focused($editorFocused)
         }
     }
 }

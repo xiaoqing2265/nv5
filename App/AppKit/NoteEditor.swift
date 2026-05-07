@@ -8,6 +8,7 @@ struct NoteEditor: NSViewRepresentable {
     let initialAttributes: Data?
     let initialSelection: NSRange?
     let highlightQuery: String
+    var focusTrigger: UUID?
     var onEscape: () -> Void
     let onCommit: (String, Data?, NSRange?) -> Void
 
@@ -44,6 +45,11 @@ struct NoteEditor: NSViewRepresentable {
             context.coordinator.loadNote(id: noteID, body: initialBody, attributes: initialAttributes, selection: initialSelection)
         }
         context.coordinator.applyHighlight(query: highlightQuery)
+
+        if let trigger = focusTrigger, context.coordinator.lastFocusTrigger != trigger {
+            context.coordinator.lastFocusTrigger = trigger
+            context.coordinator.bringFocus()
+        }
     }
 
     func makeCoordinator() -> Coordinator {
@@ -54,12 +60,24 @@ struct NoteEditor: NSViewRepresentable {
         var parent: NoteEditor
         weak var textView: NSTextView?
         var currentNoteID: UUID?
+        var lastFocusTrigger: UUID?
         private var saveTask: Task<Void, Never>?
         private var undoManagers: [UUID: UndoManager] = [:]
 
         init(parent: NoteEditor) {
             self.parent = parent
             super.init()
+        }
+
+        @MainActor
+        func bringFocus() {
+            guard let textView = textView else { return }
+            Task { @MainActor in
+                await Task.yield()
+                guard let window = textView.window,
+                      window.firstResponder != textView else { return }
+                window.makeFirstResponder(textView)
+            }
         }
 
         func loadNote(id: UUID, body: String, attributes: Data?, selection: NSRange?) {

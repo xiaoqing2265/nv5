@@ -121,6 +121,7 @@ public final class NoteStore {
             note.localDirty = true
             try note.update(db)
         }
+        notes.removeAll { $0.id == id }
     }
 
     public func purgeDeletedAndSynced() async throws {

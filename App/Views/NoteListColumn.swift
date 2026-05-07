@@ -69,9 +69,7 @@ struct NoteListColumn: View {
         }
         .onChange(of: filteredNotes) { _, newNotes in
             if let currentID = coordinator.selectedNoteID {
-                let existsInStore = coordinator.store?.notes
-                    .contains(where: { $0.id == currentID }) ?? false
-                if !existsInStore {
+                if !newNotes.contains(where: { $0.id == currentID }) {
                     coordinator.selectedNoteID = newNotes.first?.id
                 }
             } else {

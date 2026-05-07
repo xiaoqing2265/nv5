@@ -3,19 +3,16 @@ import AppKit
 
 struct NVSearchBar: NSViewRepresentable {
     @Binding var text: String
+    var isFocused: Bool
     var onSubmit: () -> Void
     var onArrowDown: () -> Void
     var onArrowUp: () -> Void
+    var onEscape: () -> Void
 
     func makeNSView(context: Context) -> NSSearchField {
-        let field = InterceptingSearchField()
-        field.placeholderString = "Search or create..."
+        let field = NSSearchField()
+        field.placeholderString = "搜索或新建..."
         field.delegate = context.coordinator
-        field.target = context.coordinator
-        field.action = #selector(Coordinator.fieldChanged(_:))
-        field.onSubmit = onSubmit
-        field.onArrowDown = onArrowDown
-        field.onArrowUp = onArrowUp
         field.focusRingType = .none
         return field
     }
@@ -24,40 +21,43 @@ struct NVSearchBar: NSViewRepresentable {
         if nsView.stringValue != text {
             nsView.stringValue = text
         }
-        if let f = nsView as? InterceptingSearchField {
-            f.onSubmit = onSubmit
-            f.onArrowDown = onArrowDown
-            f.onArrowUp = onArrowUp
+        context.coordinator.parent = self
+        
+        if isFocused {
+            DispatchQueue.main.async {
+                if let window = nsView.window, window.firstResponder != nsView.currentEditor() {
+                    window.makeFirstResponder(nsView)
+                }
+            }
         }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     final class Coordinator: NSObject, NSSearchFieldDelegate {
-        let parent: NVSearchBar
+        var parent: NVSearchBar
         init(_ parent: NVSearchBar) { self.parent = parent }
 
-        @objc func fieldChanged(_ sender: NSSearchField) {
-            parent.text = sender.stringValue
+        func controlTextDidChange(_ obj: Notification) {
+            guard let field = obj.object as? NSSearchField else { return }
+            parent.text = field.stringValue
         }
-    }
-}
 
-final class InterceptingSearchField: NSSearchField {
-    var onSubmit: (() -> Void)?
-    var onArrowDown: (() -> Void)?
-    var onArrowUp: (() -> Void)?
-
-    override func keyDown(with event: NSEvent) {
-        switch event.keyCode {
-        case 36, 76:
-            onSubmit?()
-        case 125:
-            onArrowDown?()
-        case 126:
-            onArrowUp?()
-        default:
-            super.keyDown(with: event)
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+                parent.onSubmit()
+                return true
+            } else if commandSelector == #selector(NSResponder.moveDown(_:)) {
+                parent.onArrowDown()
+                return true
+            } else if commandSelector == #selector(NSResponder.moveUp(_:)) {
+                parent.onArrowUp()
+                return true
+            } else if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+                parent.onEscape()
+                return true
+            }
+            return false
         }
     }
 }

@@ -1,6 +1,7 @@
 import Foundation
 import NVModel
 import NVStore
+import NVCrypto
 
 public struct RemoteNotePayload: Codable, Sendable {
     public let schemaVersion: Int
@@ -13,6 +14,19 @@ public struct RemoteNotePayload: Codable, Sendable {
     public let modifiedAt: Date
     public let isEncrypted: Bool
     public let pinned: Bool
+
+    public init(id: UUID, title: String, body: String, bodyAttributesBase64: String?, labels: [String], createdAt: Date, modifiedAt: Date, isEncrypted: Bool, pinned: Bool) {
+        self.schemaVersion = 1
+        self.id = id
+        self.title = title
+        self.body = body
+        self.bodyAttributesBase64 = bodyAttributesBase64
+        self.labels = labels
+        self.createdAt = createdAt
+        self.modifiedAt = modifiedAt
+        self.isEncrypted = isEncrypted
+        self.pinned = pinned
+    }
 
     public init(from note: Note) {
         self.schemaVersion = 1
@@ -42,25 +56,28 @@ public struct RemoteNotePayload: Codable, Sendable {
     }
 }
 
+@Observable
 @MainActor
-public final class SyncCoordinator: ObservableObject {
-    @Published public private(set) var status: SyncStatus = .idle
-    @Published public private(set) var lastSyncDate: Date?
-    @Published public private(set) var lastError: Error?
+public final class SyncCoordinator {
+    public private(set) var status: SyncStatus = .idle
+    public private(set) var lastSyncDate: Date?
+    public private(set) var lastError: Error?
 
-    public enum SyncStatus: Equatable {
+    public enum SyncStatus: Sendable, Equatable {
         case idle, syncing, error(String)
     }
 
     private let client: WebDAVClient
     private let store: NoteStore
     private let database: Database
+    private let crypto: CryptoEngine?
     private var timer: Timer?
 
-    public init(client: WebDAVClient, store: NoteStore, database: Database) {
+    public init(client: WebDAVClient, store: NoteStore, database: Database, crypto: CryptoEngine? = nil) {
         self.client = client
         self.store = store
         self.database = database
+        self.crypto = crypto
         startPeriodicSync(interval: 300)
     }
 
@@ -145,7 +162,24 @@ public final class SyncCoordinator: ObservableObject {
     }
 
     private func uploadNew(_ note: Note) async throws {
-        let payload = RemoteNotePayload(from: note)
+        var payload = RemoteNotePayload(from: note)
+        
+        // Apply End-to-End Encryption if crypto engine is available
+        if let crypto = crypto, !payload.isEncrypted {
+            let encryptedBody = try await crypto.seal(payload.body)
+            payload = RemoteNotePayload(
+                id: payload.id,
+                title: payload.title,
+                body: encryptedBody.base64EncodedString(),
+                bodyAttributesBase64: payload.bodyAttributesBase64,
+                labels: payload.labels,
+                createdAt: payload.createdAt,
+                modifiedAt: payload.modifiedAt,
+                isEncrypted: true,
+                pinned: payload.pinned
+            )
+        }
+        
         let data = try JSONEncoder.iso8601.encode(payload)
         let path = remotePath(for: note)
         let etag = try await client.upload(path: path, data: data, ifMatch: nil)
@@ -153,7 +187,24 @@ public final class SyncCoordinator: ObservableObject {
     }
 
     private func uploadUpdate(note: Note, remoteEtag: String?) async throws {
-        let payload = RemoteNotePayload(from: note)
+        var payload = RemoteNotePayload(from: note)
+        
+        // Apply End-to-End Encryption if crypto engine is available
+        if let crypto = crypto, !payload.isEncrypted {
+            let encryptedBody = try await crypto.seal(payload.body)
+            payload = RemoteNotePayload(
+                id: payload.id,
+                title: payload.title,
+                body: encryptedBody.base64EncodedString(),
+                bodyAttributesBase64: payload.bodyAttributesBase64,
+                labels: payload.labels,
+                createdAt: payload.createdAt,
+                modifiedAt: payload.modifiedAt,
+                isEncrypted: true,
+                pinned: payload.pinned
+            )
+        }
+        
         let data = try JSONEncoder.iso8601.encode(payload)
         let path = note.remotePath ?? remotePath(for: note)
         do {
@@ -166,7 +217,26 @@ public final class SyncCoordinator: ObservableObject {
 
     private func downloadAndInsert(id: UUID, resource: WebDAVResource) async throws {
         guard let (data, etag) = try await client.download(path: "notes/\(resource.path)") else { return }
-        let payload = try JSONDecoder.iso8601.decode(RemoteNotePayload.self, from: data)
+        var payload = try JSONDecoder.iso8601.decode(RemoteNotePayload.self, from: data)
+        
+        // Decrypt if necessary
+        if payload.isEncrypted, let crypto = crypto {
+            if let encryptedData = Data(base64Encoded: payload.body),
+               let decryptedBody = try? await crypto.open(encryptedData) {
+                payload = RemoteNotePayload(
+                    id: payload.id,
+                    title: payload.title,
+                    body: decryptedBody,
+                    bodyAttributesBase64: payload.bodyAttributesBase64,
+                    labels: payload.labels,
+                    createdAt: payload.createdAt,
+                    modifiedAt: payload.modifiedAt,
+                    isEncrypted: false,
+                    pinned: payload.pinned
+                )
+            }
+        }
+        
         let note = payload.toNote()
         let etagValue = etag
         let pathValue = "notes/\(resource.path)"
@@ -182,12 +252,32 @@ public final class SyncCoordinator: ObservableObject {
 
     private func downloadAndUpdate(id: UUID, resource: WebDAVResource) async throws {
         guard let (data, etag) = try await client.download(path: "notes/\(resource.path)") else { return }
-        let payload = try JSONDecoder.iso8601.decode(RemoteNotePayload.self, from: data)
+        var payload = try JSONDecoder.iso8601.decode(RemoteNotePayload.self, from: data)
+        
+        // Decrypt if necessary
+        if payload.isEncrypted, let crypto = crypto {
+            if let encryptedData = Data(base64Encoded: payload.body),
+               let decryptedBody = try? await crypto.open(encryptedData) {
+                payload = RemoteNotePayload(
+                    id: payload.id,
+                    title: payload.title,
+                    body: decryptedBody,
+                    bodyAttributesBase64: payload.bodyAttributesBase64,
+                    labels: payload.labels,
+                    createdAt: payload.createdAt,
+                    modifiedAt: payload.modifiedAt,
+                    isEncrypted: false,
+                    pinned: payload.pinned
+                )
+            }
+        }
+        
         let remoteEtag = etag
         let remotePathStr = "notes/\(resource.path)"
+        let finalPayload = payload
         try await database.writer.write { db in
             guard let existing = try Note.fetchOne(db, key: id.uuidString) else { return }
-            var updated = payload.toNote(preserving: existing)
+            var updated = finalPayload.toNote(preserving: existing)
             updated.etag = remoteEtag
             updated.remotePath = remotePathStr
             updated.lastSyncedAt = Date()

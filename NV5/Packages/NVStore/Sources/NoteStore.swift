@@ -1,63 +1,58 @@
 import Foundation
 import GRDB
-import Combine
 import NVModel
+import Observation
 
+@Observable
 @MainActor
-public final class NoteStore: ObservableObject {
-    @Published public private(set) var notes: [Note] = []
+public final class NoteStore {
+    public private(set) var notes: [Note] = []
+    public private(set) var observationError: Error?
 
     private let database: Database
-    private var cancellable: AnyCancellable?
+    private nonisolated(unsafe) var observationTask: Task<Void, Never>?
 
     public init(database: Database) {
         self.database = database
-        observeNotes()
+        startObserving()
     }
 
-    private func observeNotes() {
-        let observation = ValueObservation.tracking { db in
-            try Note
-                .filter(Note.Columns.deletedLocally == false)
-                .order(Note.Columns.pinned.desc, Note.Columns.modifiedAt.desc)
-                .fetchAll(db)
-        }
-        cancellable = observation
-            .publisher(in: database.writer)
-            .receive(on: DispatchQueue.main)
-            .sink(
-                receiveCompletion: { _ in },
-                receiveValue: { [weak self] notes in
-                    self?.notes = notes
+    deinit {
+        observationTask?.cancel()
+    }
+
+    private func startObserving() {
+        let writer = database.writer
+        observationTask = Task { [weak self] in
+            let observation = ValueObservation.tracking { db in
+                try Note
+                    .filter(Note.Columns.deletedLocally == false)
+                    .order(Note.Columns.pinned.desc, Note.Columns.modifiedAt.desc)
+                    .fetchAll(db)
+            }
+
+            do {
+                for try await notes in observation.values(in: writer) {
+                    await MainActor.run {
+                        self?.notes = notes
+                        self?.observationError = nil
+                    }
                 }
-            )
+            } catch {
+                await MainActor.run {
+                    self?.observationError = error
+                }
+            }
+        }
     }
 
     public func upsert(_ note: Note) async throws {
-        let id = note.id
-        let title = note.title
-        let body = note.body
-        let bodyAttributes = note.bodyAttributes
-        let labels = note.labels
-        let createdAt = note.createdAt
-        let pinned = note.pinned
-        let isEncrypted = note.isEncrypted
-        let remotePath = note.remotePath
-        let etag = note.etag
-        let lastSyncedAt = note.lastSyncedAt
-        let deletedLocally = note.deletedLocally
         let now = Date()
-
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            do {
-                try database.writer.write { db in
-                    var toSave = Note(id: id, title: title, body: body, bodyAttributes: bodyAttributes, labels: labels, createdAt: createdAt, modifiedAt: now, lastSelectedRange: nil, isEncrypted: isEncrypted, pinned: pinned, etag: etag, remotePath: remotePath, lastSyncedAt: lastSyncedAt, localDirty: true, deletedLocally: deletedLocally)
-                    try toSave.save(db)
-                }
-                continuation.resume()
-            } catch {
-                continuation.resume(throwing: error)
-            }
+        try await database.writer.write { db in
+            var toSave = note
+            toSave.modifiedAt = now
+            toSave.localDirty = true
+            try toSave.save(db)
         }
     }
 
@@ -105,12 +100,15 @@ public final class NoteStore: ObservableObject {
     public func search(query: String) async throws -> [Note] {
         guard !query.isEmpty else { return notes }
         return try await database.writer.read { db in
-            let pattern = "%\(query)%"
-            return try Note
-                .filter(Note.Columns.title.like(pattern) || Note.Columns.body.like(pattern))
-                .filter(Note.Columns.deletedLocally == false)
-                .order(Note.Columns.pinned.desc, Note.Columns.modifiedAt.desc)
-                .fetchAll(db)
+            let ftsQuery = query.split(separator: " ").map { "\"\($0)\"*" }.joined(separator: " ")
+            let sql = """
+                SELECT note.* FROM note
+                JOIN note_fts ON note.rowid = note_fts.rowid
+                WHERE note_fts MATCH ?
+                AND note.deletedLocally = 0
+                ORDER BY note.pinned DESC, note.modifiedAt DESC
+                """
+            return try Note.fetchAll(db, sql: sql, arguments: [ftsQuery])
         }
     }
 

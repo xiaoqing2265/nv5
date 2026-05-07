@@ -3,8 +3,13 @@ import AppKit
 import NVModel
 
 struct NoteEditor: NSViewRepresentable {
-    @Binding var note: Note
+    let noteID: UUID
+    let initialBody: String
+    let initialAttributes: Data?
+    let initialSelection: NSRange?
     let highlightQuery: String
+    var isFocused: Bool
+    var onEscape: () -> Void
     let onCommit: (String, Data?, NSRange?) -> Void
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -26,19 +31,23 @@ struct NoteEditor: NSViewRepresentable {
         textView.delegate = context.coordinator
 
         context.coordinator.textView = textView
-        context.coordinator.loadNote(note)
+        context.coordinator.parent = self
+        context.coordinator.loadNote(id: noteID, body: initialBody, attributes: initialAttributes, selection: initialSelection)
         return scrollView
     }
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         guard let textView = nsView.documentView as? NSTextView else { return }
-        if context.coordinator.currentNoteID != note.id {
-            context.coordinator.loadNote(note)
+        context.coordinator.parent = self
+
+        if context.coordinator.currentNoteID != noteID {
+            context.coordinator.commitPendingIfNeeded()
+            context.coordinator.loadNote(id: noteID, body: initialBody, attributes: initialAttributes, selection: initialSelection)
         }
         context.coordinator.applyHighlight(query: highlightQuery)
-        if context.coordinator.shouldFocus {
-            textView.window?.makeFirstResponder(textView)
-            context.coordinator.shouldFocus = false
+
+        if isFocused {
+            context.coordinator.requestFocus()
         }
     }
 
@@ -50,27 +59,49 @@ struct NoteEditor: NSViewRepresentable {
         var parent: NoteEditor
         weak var textView: NSTextView?
         var currentNoteID: UUID?
-        var shouldFocus = false
         private var saveTask: Task<Void, Never>?
         private var undoManagers: [UUID: UndoManager] = [:]
 
         init(parent: NoteEditor) {
             self.parent = parent
             super.init()
-            NotificationCenter.default.addObserver(
-                forName: .focusEditor, object: nil, queue: .main
-            ) { [weak self] _ in self?.shouldFocus = true }
         }
 
-        func loadNote(_ note: Note) {
+        @MainActor
+        func requestFocus() {
             guard let textView = textView else { return }
-            if let oldID = currentNoteID, oldID != note.id {
-                commitNow()
+
+            // 使用多重检查确保焦点设置成功
+            if let window = textView.window {
+                // 如果已经是 first responder，不需要重复设置
+                if window.firstResponder == textView {
+                    return
+                }
+
+                // 立即尝试设置焦点
+                if window.makeFirstResponder(textView) {
+                    return
+                }
+
+                // 如果失败，在下一个 runloop 重试
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self,
+                          let textView = self.textView,
+                          let window = textView.window,
+                          window.firstResponder != textView else { return }
+                    _ = window.makeFirstResponder(textView)
+                }
             }
-            currentNoteID = note.id
+        }
+
+        func loadNote(id: UUID, body: String, attributes: Data?, selection: NSRange?) {
+            guard let textView = textView else { return }
+            
+            commitPendingIfNeeded()
+            currentNoteID = id
 
             let attributed: NSAttributedString
-            if let data = note.bodyAttributes,
+            if let data = attributes,
                let restored = try? NSAttributedString(
                    data: data,
                    options: [.documentType: NSAttributedString.DocumentType.rtfd],
@@ -78,24 +109,27 @@ struct NoteEditor: NSViewRepresentable {
                 attributed = restored
             } else {
                 attributed = NSAttributedString(
-                    string: note.body,
+                    string: body,
                     attributes: [.font: NSFont.systemFont(ofSize: 14),
                                  .foregroundColor: NSColor.labelColor])
             }
 
+            textView.textStorage?.beginEditing()
             textView.textStorage?.setAttributedString(attributed)
+            textView.textStorage?.endEditing()
 
-            if let range = note.lastSelectedRange,
+            if let range = selection,
                NSMaxRange(range) <= textView.string.utf16.count {
                 textView.setSelectedRange(range)
                 textView.scrollRangeToVisible(range)
             }
 
-            let undo = undoManagers[note.id] ?? UndoManager()
-            undoManagers[note.id] = undo
-            textView.undoManager?.removeAllActions()
-
-            TextDecoratorPipeline.runAll(on: textView.textStorage!)
+            let undo = undoManagers[id] ?? UndoManager()
+            undoManagers[id] = undo
+            
+            if let storage = textView.textStorage {
+                TextDecoratorPipeline.runAll(on: storage)
+            }
         }
 
         func textDidChange(_ notification: Notification) {
@@ -104,16 +138,26 @@ struct NoteEditor: NSViewRepresentable {
             saveTask = Task { [weak self] in
                 try? await Task.sleep(nanoseconds: 300_000_000)
                 guard !Task.isCancelled else { return }
-                await MainActor.run { self?.commitNow() }
+                await MainActor.run { self?.commitPendingIfNeeded() }
             }
-            TextDecoratorPipeline.runAll(on: textView.textStorage!)
+            if let storage = textView.textStorage {
+                TextDecoratorPipeline.runAll(on: storage)
+            }
         }
 
         func textDidEndEditing(_ notification: Notification) {
-            commitNow()
+            commitPendingIfNeeded()
         }
 
-        private func commitNow() {
+        func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+                parent.onEscape()
+                return true
+            }
+            return false
+        }
+
+        func commitPendingIfNeeded() {
             guard let textView = textView,
                   let storage = textView.textStorage else { return }
             let plain = storage.string

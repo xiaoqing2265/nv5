@@ -6,7 +6,8 @@ struct NoteListColumn: View {
     let selectedLabel: String?
 
     @State private var filteredNotes: [Note] = []
-    @FocusState private var searchFocused: Bool
+    @FocusState private var focusedField: AppCoordinator.FocusTarget?
+    @State private var hasExplicitSelection = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -15,11 +16,18 @@ struct NoteListColumn: View {
                     get: { coordinator.query },
                     set: { coordinator.query = $0 }
                 ),
+                isFocused: focusedField == .searchField,
                 onSubmit: { activateOrCreate() },
                 onArrowDown: { moveSelection(by: 1) },
-                onArrowUp: { moveSelection(by: -1) }
+                onArrowUp: { moveSelection(by: -1) },
+                onEscape: { 
+                    coordinator.query = "" 
+                    if coordinator.focusTarget != .searchField {
+                        coordinator.focusTarget = .searchField
+                    }
+                }
             )
-            .focused($searchFocused)
+            .focused($focusedField, equals: .searchField)
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
 
@@ -49,8 +57,16 @@ struct NoteListColumn: View {
             }
         }
         .task(id: refreshKey) { await refresh() }
-        .onReceive(NotificationCenter.default.publisher(for: .focusSearchField)) { _ in
-            searchFocused = true
+        .onChange(of: coordinator.focusTarget) { _, new in
+            focusedField = new
+        }
+        .onChange(of: focusedField) { _, new in
+            if let new = new, new != coordinator.focusTarget {
+                coordinator.focusTarget = new
+            }
+        }
+        .onChange(of: coordinator.query) { _, _ in
+            hasExplicitSelection = false
         }
     }
 
@@ -70,23 +86,66 @@ struct NoteListColumn: View {
         } else {
             filteredNotes = base
         }
+        
+        if let currentID = coordinator.selectedNoteID {
+            // Check if the currently selected note still exists in the overall store
+            let existsInStore = coordinator.store?.notes.contains(where: { $0.id == currentID }) ?? false
+            
+            if !existsInStore {
+                // Only if the note is gone (e.g. deleted), select the first available filtered note
+                coordinator.selectedNoteID = filteredNotes.first?.id
+            }
+            // If it exists in store, we keep it selected to protect the Editor focus,
+            // even if it's not in the current search results (filteredNotes).
+        } else {
+            // No selection yet, pick the first from filtered results
+            coordinator.selectedNoteID = filteredNotes.first?.id
+        }
     }
 
     private func activateOrCreate() {
+        // 优先级 4: 搜索框为空,激活当前选中项
+        if coordinator.query.isEmpty {
+            if coordinator.selectedNoteID != nil {
+                coordinator.focusTarget = .editor
+            }
+            return
+        }
+
+        // 优先级 1: 完全匹配(忽略大小写)
         let exact = filteredNotes.first { $0.title.caseInsensitiveCompare(coordinator.query) == .orderedSame }
         if let match = exact {
             coordinator.selectedNoteID = match.id
-            NotificationCenter.default.post(name: .focusEditor, object: nil)
-        } else if !coordinator.query.isEmpty {
-            coordinator.newNote()
-        } else if let first = filteredNotes.first {
-            coordinator.selectedNoteID = first.id
-            NotificationCenter.default.post(name: .focusEditor, object: nil)
+            coordinator.focusTarget = .editor
+            return
         }
+
+        // 优先级 2: 列表非空,激活虚拟选中项(当前选中或第一条)
+        if !filteredNotes.isEmpty {
+            let targetID = coordinator.selectedNoteID ?? filteredNotes.first?.id
+            if let id = targetID, filteredNotes.contains(where: { $0.id == id }) {
+                coordinator.selectedNoteID = id
+                coordinator.focusTarget = .editor
+                return
+            }
+        }
+
+        // 优先级 3: 搜索词非空(去空白后)且列表为空,创建新笔记
+        let trimmed = coordinator.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            Task {
+                if let newNoteID = await coordinator.newNote() {
+                    coordinator.selectedNoteID = newNoteID
+                }
+                await refresh()
+            }
+        }
+        // 否则无操作(搜索词全是空白)
     }
 
     private func moveSelection(by delta: Int) {
         guard !filteredNotes.isEmpty else { return }
+        hasExplicitSelection = true
         let currentIndex = filteredNotes.firstIndex { $0.id == coordinator.selectedNoteID } ?? -1
         let newIndex = max(0, min(filteredNotes.count - 1, currentIndex + delta))
         coordinator.selectedNoteID = filteredNotes[newIndex].id
@@ -119,7 +178,7 @@ struct NoteRow: View {
                 Text(note.title.isEmpty ? "Untitled" : note.title)
                     .font(.system(.body, design: .default, weight: .medium))
                     .lineLimit(1)
-                Text(snippet)
+                Text(note.body.replacingOccurrences(of: "\n", with: " ").prefix(120))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -133,10 +192,5 @@ struct NoteRow: View {
             }
         }
         .padding(.vertical, 2)
-    }
-
-    private var snippet: String {
-        let body = note.body.replacingOccurrences(of: "\n", with: " ")
-        return String(body.prefix(120))
     }
 }

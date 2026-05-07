@@ -6,3 +6,9 @@ SourcePackages/
 .build/
 NV5.xcodeproj/
 *.xcworkspace/
+.gitnexus
+build_output/
+*.log
+.claude/
+AGENTS.md
+CLAUDE.md

@@ -1,6 +1,7 @@
 import SwiftUI
 import NVModel
 import NVStore
+import NVKit
 
 struct MainView: View {
     @Environment(AppCoordinator.self) private var coordinator
@@ -25,9 +26,9 @@ struct MainView: View {
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
             Button {
-                coordinator.newNote()
+                Task { _ = await coordinator.newNote() }
             } label: {
-                Label("New Note", systemImage: "square.and.pencil")
+                Label("新建笔记", systemImage: "square.and.pencil")
             }
         }
         ToolbarItem(placement: .primaryAction) {
@@ -39,33 +40,18 @@ struct MainView: View {
 struct SyncStatusButton: View {
     @Environment(AppCoordinator.self) private var coordinator
 
-    var body: some View {
-        Button {
-            coordinator.triggerSync()
-        } label: {
-            if let sync = coordinator.sync {
-                switch sync.status {
-                case .idle:
-                    Label("Sync", systemImage: "arrow.triangle.2.circlepath")
-                case .syncing:
-                    ProgressView().controlSize(.small)
-                case .error:
-                    Label("Sync error", systemImage: "exclamationmark.arrow.triangle.2.circlepath")
-                        .foregroundStyle(.red)
-                }
-            } else {
-                Label("Configure WebDAV", systemImage: "icloud.slash")
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .help(syncTooltip)
+    private var indicatorState: NVKit.SyncStatusIndicator.State {
+        guard let sync = coordinator.sync else { return .unconfigured }
+        return SyncStatusBridge.uiState(
+            from: sync.status,
+            lastSync: sync.lastSyncDate,
+            isConfigured: true
+        )
     }
 
-    private var syncTooltip: String {
-        guard let sync = coordinator.sync else { return "Open Settings to configure WebDAV" }
-        if let date = sync.lastSyncDate {
-            return "Last synced: \(date.formatted(.relative(presentation: .named)))"
+    var body: some View {
+        NVKit.SyncStatusIndicator(state: indicatorState) {
+            coordinator.triggerSync()
         }
-        return "Not synced yet"
     }
 }

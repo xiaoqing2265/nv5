@@ -6,11 +6,11 @@ struct SettingsView: View {
     var body: some View {
         TabView {
             GeneralSettings()
-                .tabItem { Label("General", systemImage: "gear") }
+                .tabItem { Label("通用", systemImage: "gear") }
             WebDAVSettingsView()
-                .tabItem { Label("Sync", systemImage: "icloud") }
+                .tabItem { Label("同步", systemImage: "icloud") }
             ShortcutsSettings()
-                .tabItem { Label("Shortcuts", systemImage: "keyboard") }
+                .tabItem { Label("快捷键", systemImage: "keyboard") }
         }
         .frame(width: 480, height: 360)
     }
@@ -19,7 +19,7 @@ struct SettingsView: View {
 struct ShortcutsSettings: View {
     var body: some View {
         Form {
-            KeyboardShortcuts.Recorder("Activate NV5", name: .activateNV5)
+            KeyboardShortcuts.Recorder("激活 NV5", name: .activateNV5)
         }
         .padding()
     }
@@ -32,9 +32,9 @@ struct GeneralSettings: View {
     var body: some View {
         Form {
             Slider(value: $fontSize, in: 10...22, step: 1) {
-                Text("Editor font size: \(Int(fontSize))pt")
+                Text("编辑器字号: \(Int(fontSize))pt")
             }
-            Stepper("Sync every \(Int(syncInterval)) minutes",
+            Stepper("每 \(Int(syncInterval)) 分钟同步一次",
                     value: $syncInterval, in: 1...60, step: 1)
         }
         .padding()
@@ -52,22 +52,22 @@ struct WebDAVSettingsView: View {
 
     var body: some View {
         Form {
-            Section("Server") {
-                TextField("Server URL", text: $serverURL,
+            Section("服务器") {
+                TextField("服务器地址", text: $serverURL,
                          prompt: Text("https://dav.example.com/dav/"))
                     .textContentType(.URL)
-                TextField("Username", text: $username)
+                TextField("用户名", text: $username)
                     .textContentType(.username)
-                SecureField("Password", text: $password)
+                SecureField("密码", text: $password)
                     .textContentType(.password)
-                TextField("Folder path", text: $basePath, prompt: Text("NV5"))
+                TextField("文件夹路径", text: $basePath, prompt: Text("NV5"))
             }
 
             Section {
                 HStack {
-                    Button("Test Connection") { Task { await testConnection() } }
+                    Button("测试连接") { Task { await testConnection() } }
                         .disabled(isTesting || serverURL.isEmpty)
-                    Button("Save & Sync") { Task { await save() } }
+                    Button("保存并同步") { Task { await save() } }
                         .keyboardShortcut(.defaultAction)
                         .disabled(serverURL.isEmpty || username.isEmpty)
                     Spacer()
@@ -85,11 +85,11 @@ struct WebDAVSettingsView: View {
     }
 
     private func loadCurrent() {
-        guard let cfg = WebDAVSettings.load() else { return }
-        serverURL = cfg.serverURL.absoluteString
-        username = cfg.username
-        basePath = cfg.basePath
-        password = (try? WebDAVKeychain.loadPassword(for: cfg)) ?? ""
+        guard let credentials = WebDAVSettings.load() else { return }
+        serverURL = credentials.config.serverURL.absoluteString
+        username = credentials.config.username
+        basePath = credentials.config.basePath
+        password = credentials.password
     }
 
     private func makeConfig() -> WebDAVConfig? {
@@ -107,7 +107,7 @@ struct WebDAVSettingsView: View {
         do {
             try await client.ensureDirectory(config.basePath)
             _ = try await client.listDirectory(path: "")
-            testResult = "✓ Connection successful"
+            testResult = "✓ 连接成功"
         } catch {
             testResult = "✗ \(error)"
         }
@@ -115,9 +115,15 @@ struct WebDAVSettingsView: View {
 
     private func save() async {
         guard let config = makeConfig() else { return }
-        WebDAVSettings.save(config)
-        try? WebDAVKeychain.storePassword(password, for: config)
+        
+        // Preserve existing sync master key if available, otherwise generate new
+        let existing = WebDAVSettings.load()
+        let masterKey = existing?.syncMasterKey ?? Data((0..<32).map { _ in UInt8.random(in: 0...255) }).base64EncodedString()
+        
+        let credentials = WebDAVCredentials(config: config, password: password, syncMasterKey: masterKey)
+        try? WebDAVSettings.save(credentials)
+        
         coordinator.reconfigureSync()
-        testResult = "✓ Saved"
+        testResult = "✓ 已保存"
     }
 }

@@ -9,6 +9,13 @@ public actor CryptoEngine {
         self.key = key
     }
 
+    public init(base64Key: String) throws {
+        guard let data = Data(base64Encoded: base64Key) else {
+            throw CryptoError.invalidKey
+        }
+        self.key = SymmetricKey(data: data)
+    }
+
     public static func loadOrCreate(serviceName: String = "NV5.MasterKey") throws -> CryptoEngine {
         if let existing = try Keychain.loadKey(service: serviceName) {
             return CryptoEngine(key: existing)
@@ -40,6 +47,7 @@ public actor CryptoEngine {
 public enum CryptoError: Error {
     case sealFailed
     case openFailed
+    case invalidKey
 }
 
 enum Keychain {

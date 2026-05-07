@@ -55,23 +55,23 @@ public final class Database {
 extension Note: FetchableRecord, MutablePersistableRecord {
     public static let databaseTableName = "note"
 
-    enum Columns {
-        static let id = Column("id")
-        static let title = Column("title")
-        static let body = Column("body")
-        static let bodyAttributes = Column("bodyAttributes")
-        static let labelsJSON = Column("labelsJSON")
-        static let createdAt = Column("createdAt")
-        static let modifiedAt = Column("modifiedAt")
-        static let lastSelectedLocation = Column("lastSelectedLocation")
-        static let lastSelectedLength = Column("lastSelectedLength")
-        static let isEncrypted = Column("isEncrypted")
-        static let pinned = Column("pinned")
-        static let etag = Column("etag")
-        static let remotePath = Column("remotePath")
-        static let lastSyncedAt = Column("lastSyncedAt")
-        static let localDirty = Column("localDirty")
-        static let deletedLocally = Column("deletedLocally")
+    public enum Columns {
+        public static let id = Column("id")
+        public static let title = Column("title")
+        public static let body = Column("body")
+        public static let bodyAttributes = Column("bodyAttributes")
+        public static let labelsJSON = Column("labelsJSON")
+        public static let createdAt = Column("createdAt")
+        public static let modifiedAt = Column("modifiedAt")
+        public static let lastSelectedLocation = Column("lastSelectedLocation")
+        public static let lastSelectedLength = Column("lastSelectedLength")
+        public static let isEncrypted = Column("isEncrypted")
+        public static let pinned = Column("pinned")
+        public static let etag = Column("etag")
+        public static let remotePath = Column("remotePath")
+        public static let lastSyncedAt = Column("lastSyncedAt")
+        public static let localDirty = Column("localDirty")
+        public static let deletedLocally = Column("deletedLocally")
     }
 
     public init(row: Row) throws {
@@ -121,10 +121,6 @@ extension Note: FetchableRecord, MutablePersistableRecord {
         container[Columns.localDirty] = localDirty
         container[Columns.deletedLocally] = deletedLocally
     }
-}
-
-extension Note {
-    @MainActor static let fts5MatchAssociation = hasOne(NoteFTS.self, using: ForeignKey(["rowid"]))
 }
 
 struct NoteFTS: TableRecord {

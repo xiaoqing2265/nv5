@@ -3,6 +3,7 @@ import KeyboardShortcuts
 import NVStore
 import NVSync
 import NVModel
+import NVCrypto
 
 extension KeyboardShortcuts.Name {
     static let activateNV5 = Self("activateNV5", default: .init(.space, modifiers: [.command, .control]))
@@ -22,10 +23,10 @@ struct NV5App: App {
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
-            CommandGroup(replacing: .newItem) {
-                Button("New Note") { coordinator.newNote() }
-                    .keyboardShortcut("n", modifiers: .command)
-            }
+CommandGroup(replacing: .newItem) {
+            Button("新建笔记") { Task { _ = await coordinator.newNote() } }
+                .keyboardShortcut("n", modifiers: .command)
+        }
         }
 
         Settings {
@@ -37,14 +38,30 @@ struct NV5App: App {
 
 @Observable
 final class AppCoordinator {
+    enum FocusTarget: Hashable {
+        case searchField
+        case editor
+        case titleField
+        case none
+    }
+
     var database: Database!
     var store: NoteStore!
     var sync: SyncCoordinator?
     var query: String = ""
     var selectedNoteID: UUID?
+    var focusTarget: FocusTarget = .none
+    private var isCreatingNote = false
+    private var isBootstrapped = false
 
     @MainActor
     func bootstrap() {
+        guard !isBootstrapped else { return }
+        isBootstrapped = true
+        
+        // One-time migration to resolve Keychain popups
+        WebDAVSettings.migrateIfNeeded()
+
         let appSupport = try! FileManager.default.url(
             for: .applicationSupportDirectory, in: .userDomainMask,
             appropriateFor: nil, create: true
@@ -61,12 +78,12 @@ final class AppCoordinator {
 
     @MainActor
     private func configureWebDAVIfAvailable() {
-        guard let config = WebDAVSettings.load(),
-              let password = try? WebDAVKeychain.loadPassword(for: config) else {
+        guard let credentials = WebDAVSettings.load() else {
             return
         }
-        let client = WebDAVClient(config: config, password: password)
-        self.sync = SyncCoordinator(client: client, store: store, database: database)
+        let client = WebDAVClient(config: credentials.config, password: credentials.password)
+        let syncCrypto = try? CryptoEngine(base64Key: credentials.syncMasterKey)
+        self.sync = SyncCoordinator(client: client, store: store, database: database, crypto: syncCrypto)
     }
 
     private func registerHotKey() {
@@ -81,18 +98,28 @@ final class AppCoordinator {
         } else {
             NSApp.activate(ignoringOtherApps: true)
             NSApp.mainWindow?.makeKeyAndOrderFront(nil)
-            NotificationCenter.default.post(name: .focusSearchField, object: nil)
+            self.focusTarget = .searchField
         }
     }
 
     @MainActor
-    func newNote() {
-        Task {
-            let note = Note(title: query.isEmpty ? "Untitled" : query)
-            try? await store.upsert(note)
-            self.selectedNoteID = note.id
-            NotificationCenter.default.post(name: .focusEditor, object: nil)
+    func newNote() async -> UUID? {
+        guard !isCreatingNote else { return nil }
+        isCreatingNote = true
+        defer { isCreatingNote = false }
+        let note = Note(title: query.isEmpty ? "无标题" : query)
+        try? await store.upsert(note)
+        self.selectedNoteID = note.id
+
+        for _ in 0..<50 {
+            if store.notes.contains(where: { $0.id == note.id }) {
+                break
+            }
+            try? await Task.sleep(nanoseconds: 20_000_000)
         }
+
+        self.focusTarget = .editor
+        return note.id
     }
 
     @MainActor
@@ -105,9 +132,4 @@ final class AppCoordinator {
         sync = nil
         configureWebDAVIfAvailable()
     }
-}
-
-extension Notification.Name {
-    static let focusSearchField = Notification.Name("NV5.focusSearchField")
-    static let focusEditor = Notification.Name("NV5.focusEditor")
 }

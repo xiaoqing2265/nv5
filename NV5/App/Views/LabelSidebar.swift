@@ -14,10 +14,10 @@ struct LabelSidebar: View {
     var body: some View {
         List(selection: $selectedLabel) {
             Section {
-                Label("All Notes", systemImage: "tray.full")
+                Label("所有笔记", systemImage: "tray.full")
                     .tag(String?.none)
             }
-            Section("Labels") {
+            Section("标签") {
                 ForEach(allLabels, id: \.name) { item in
                     HStack {
                         Label(item.name, systemImage: "tag")

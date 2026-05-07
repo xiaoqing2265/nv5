@@ -1,45 +1,30 @@
 import Foundation
 
 public enum WebDAVSettings {
-    private static let key = "NV5.WebDAVConfig"
-
-    public static func save(_ config: WebDAVConfig) {
-        if let data = try? JSONEncoder().encode(config) {
-            UserDefaults.standard.set(data, forKey: key)
+    /// Loads the WebDAV credentials from the silent CredentialStore.
+    public static func load() -> WebDAVCredentials? {
+        try? CredentialStore.load()
+    }
+    
+    /// Saves the WebDAV credentials to the silent CredentialStore.
+    public static func save(_ credentials: WebDAVCredentials) throws {
+        try CredentialStore.save(credentials)
+    }
+    
+    /// Performs a one-time migration from the old UserDefaults and Keychain storage to the new silent CredentialStore.
+    /// This effectively stops the frequent system Keychain popups.
+    public static func migrateIfNeeded() {
+        // 1. Check if already migrated
+        if (try? CredentialStore.load()) != nil { return }
+        
+        // 2. Try to load from old storage
+        let oldKey = "NV5.WebDAVConfig"
+        guard let data = UserDefaults.standard.data(forKey: oldKey),
+              let config = try? JSONDecoder().decode(WebDAVConfig.self, from: data) else {
+            return
         }
-    }
-
-    public static func load() -> WebDAVConfig? {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
-        return try? JSONDecoder().decode(WebDAVConfig.self, from: data)
-    }
-}
-
-public enum WebDAVKeychainError: Error, Sendable {
-    case storeFailed(OSStatus)
-    case loadFailed(OSStatus)
-}
-
-public enum WebDAVKeychain {
-    private static func service(for config: WebDAVConfig) -> String {
-        "NV5.WebDAV.\(config.serverURL.host ?? "unknown")"
-    }
-
-    public static func storePassword(_ password: String, for config: WebDAVConfig) throws {
-        let data = Data(password.utf8)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassInternetPassword,
-            kSecAttrServer as String: config.serverURL.host ?? "",
-            kSecAttrAccount as String: config.username,
-            kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked
-        ]
-        SecItemDelete(query as CFDictionary)
-        let status = SecItemAdd(query as CFDictionary, nil)
-        guard status == errSecSuccess else { throw WebDAVKeychainError.storeFailed(status) }
-    }
-
-    public static func loadPassword(for config: WebDAVConfig) throws -> String? {
+        
+        // 3. Try to load password from old Keychain
         let query: [String: Any] = [
             kSecClass as String: kSecClassInternetPassword,
             kSecAttrServer as String: config.serverURL.host ?? "",
@@ -47,12 +32,30 @@ public enum WebDAVKeychain {
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
+        
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
-        if status == errSecItemNotFound { return nil }
-        guard status == errSecSuccess, let data = result as? Data else {
-            throw WebDAVKeychainError.loadFailed(status)
+        
+        guard status == errSecSuccess, let passwordData = result as? Data,
+              let password = String(data: passwordData, encoding: .utf8) else {
+            return
         }
-        return String(data: data, encoding: .utf8)
+        
+        // 4. Migrate to new store
+        // Generate a new random sync master key for End-to-End Encryption
+        let masterKey = Data((0..<32).map { _ in UInt8.random(in: 0...255) }).base64EncodedString()
+        let credentials = WebDAVCredentials(config: config, password: password, syncMasterKey: masterKey)
+        
+        do {
+            try CredentialStore.save(credentials)
+            
+            // 5. Cleanup old storage to stop popups
+            UserDefaults.standard.removeObject(forKey: oldKey)
+            SecItemDelete(query as CFDictionary)
+            
+            print("Successfully migrated WebDAV credentials to silent store. Keychain popups resolved.")
+        } catch {
+            print("Failed to migrate credentials: \(error)")
+        }
     }
 }

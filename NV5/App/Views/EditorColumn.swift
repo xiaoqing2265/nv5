@@ -3,17 +3,27 @@ import NVModel
 
 struct EditorColumn: View {
     @Environment(AppCoordinator.self) private var coordinator
+    @FocusState private var editorFocused: Bool
 
     var body: some View {
         Group {
             if let id = coordinator.selectedNoteID,
                let note = coordinator.store?.notes.first(where: { $0.id == id }) {
                 editorView(for: note)
+                    .focused($editorFocused)
+                    .onChange(of: coordinator.focusTarget) { _, new in
+                        editorFocused = (new == .editor)
+                    }
+                    .onChange(of: editorFocused) { _, new in
+                        if new && coordinator.focusTarget != .editor {
+                            coordinator.focusTarget = .editor
+                        }
+                    }
             } else {
                 ContentUnavailableView(
-                    "Select or Create a Note",
+                    "选择或创建笔记",
                     systemImage: "doc.text",
-                    description: Text("Type in the search bar above; press Return to create a new note with that title.")
+                    description: Text("在上方搜索栏输入；按回车以该标题创建新笔记。")
                 )
             }
         }
@@ -24,18 +34,22 @@ struct EditorColumn: View {
             TitleBar(note: note)
             Divider()
             NoteEditor(
-                note: .constant(note),
+                noteID: note.id,
+                initialBody: note.body,
+                initialAttributes: note.bodyAttributes,
+                initialSelection: note.lastSelectedRange,
                 highlightQuery: coordinator.query,
+                isFocused: editorFocused,
+                onEscape: { coordinator.focusTarget = .searchField },
                 onCommit: { body, attrs, range in
                     Task {
-                        try? await coordinator.store?.updateBody(
+                        try? await coordinator.store.updateBody(
                             id: note.id, body: body, attributes: attrs, selection: range
                         )
                     }
                 }
             )
         }
-        .id(note.id)
     }
 }
 
@@ -57,7 +71,7 @@ struct TitleBar: View {
 
             HStack(spacing: 6) {
                 ForEach(Array(note.labels), id: \.self) { label in
-                    LabelChip(text: label) {
+                    LabelChipView(label: label) {
                         Task {
                             var updated = note
                             updated.labels.remove(label)
@@ -107,13 +121,13 @@ struct TitleBar: View {
     }
 }
 
-struct LabelChip: View {
-    let text: String
+struct LabelChipView: View {
+    let label: String
     let onRemove: () -> Void
 
     var body: some View {
         HStack(spacing: 2) {
-            Text(text).font(.caption)
+            Text(label).font(.caption)
             Button(action: onRemove) {
                 Image(systemName: "xmark").font(.caption2)
             }

@@ -110,14 +110,6 @@ final class AppCoordinator {
         let note = Note(title: query.isEmpty ? "无标题" : query)
         try? await store.upsert(note)
         self.selectedNoteID = note.id
-
-        for _ in 0..<50 {
-            if store.notes.contains(where: { $0.id == note.id }) {
-                break
-            }
-            try? await Task.sleep(nanoseconds: 20_000_000)
-        }
-
         self.focusTarget = .editor
         return note.id
     }

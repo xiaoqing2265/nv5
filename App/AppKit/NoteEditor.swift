@@ -8,7 +8,6 @@ struct NoteEditor: NSViewRepresentable {
     let initialAttributes: Data?
     let initialSelection: NSRange?
     let highlightQuery: String
-    var isFocused: Bool
     var onEscape: () -> Void
     let onCommit: (String, Data?, NSRange?) -> Void
 
@@ -45,10 +44,6 @@ struct NoteEditor: NSViewRepresentable {
             context.coordinator.loadNote(id: noteID, body: initialBody, attributes: initialAttributes, selection: initialSelection)
         }
         context.coordinator.applyHighlight(query: highlightQuery)
-
-        if isFocused {
-            context.coordinator.requestFocus()
-        }
     }
 
     func makeCoordinator() -> Coordinator {
@@ -68,29 +63,13 @@ struct NoteEditor: NSViewRepresentable {
         }
 
         @MainActor
-        func requestFocus() {
+        func bringFocus() {
             guard let textView = textView else { return }
-
-            // 使用多重检查确保焦点设置成功
-            if let window = textView.window {
-                // 如果已经是 first responder，不需要重复设置
-                if window.firstResponder == textView {
-                    return
-                }
-
-                // 立即尝试设置焦点
-                if window.makeFirstResponder(textView) {
-                    return
-                }
-
-                // 如果失败，在下一个 runloop 重试
-                DispatchQueue.main.async { [weak self] in
-                    guard let self = self,
-                          let textView = self.textView,
-                          let window = textView.window,
-                          window.firstResponder != textView else { return }
-                    _ = window.makeFirstResponder(textView)
-                }
+            Task { @MainActor in
+                await Task.yield()
+                guard let window = textView.window,
+                      window.firstResponder != textView else { return }
+                window.makeFirstResponder(textView)
             }
         }
 

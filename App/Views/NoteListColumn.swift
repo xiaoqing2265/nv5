@@ -6,8 +6,7 @@ struct NoteListColumn: View {
     let selectedLabel: String?
 
     @State private var filteredNotes: [Note] = []
-    @FocusState private var focusedField: AppCoordinator.FocusTarget?
-    @State private var hasExplicitSelection = false
+    @FocusState private var searchFieldFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -16,18 +15,19 @@ struct NoteListColumn: View {
                     get: { coordinator.query },
                     set: { coordinator.query = $0 }
                 ),
-                isFocused: focusedField == .searchField,
+                isFocused: searchFieldFocused,
                 onSubmit: { activateOrCreate() },
                 onArrowDown: { moveSelection(by: 1) },
                 onArrowUp: { moveSelection(by: -1) },
-                onEscape: { 
-                    coordinator.query = "" 
-                    if coordinator.focusTarget != .searchField {
-                        coordinator.focusTarget = .searchField
+                onEscape: {
+                    if coordinator.query.isEmpty {
+                        NSApp.hide(nil)
+                    } else {
+                        coordinator.query = ""
                     }
                 }
             )
-            .focused($focusedField, equals: .searchField)
+            .focused($searchFieldFocused)
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
 
@@ -58,16 +58,14 @@ struct NoteListColumn: View {
         }
         .task(id: refreshKey) { await refresh() }
         .onChange(of: coordinator.focusTarget) { _, new in
-            focusedField = new
+            searchFieldFocused = (new == .searchField)
         }
-        .onChange(of: focusedField) { _, new in
-            if let new = new, new != coordinator.focusTarget {
-                coordinator.focusTarget = new
+        .onChange(of: searchFieldFocused) { _, new in
+            if new && coordinator.focusTarget != .searchField {
+                coordinator.focusTarget = .searchField
             }
         }
-        .onChange(of: coordinator.query) { _, _ in
-            hasExplicitSelection = false
-        }
+        .onChange(of: coordinator.query) { _, _ in }
     }
 
     private var refreshKey: String {
@@ -145,7 +143,6 @@ struct NoteListColumn: View {
 
     private func moveSelection(by delta: Int) {
         guard !filteredNotes.isEmpty else { return }
-        hasExplicitSelection = true
         let currentIndex = filteredNotes.firstIndex { $0.id == coordinator.selectedNoteID } ?? -1
         let newIndex = max(0, min(filteredNotes.count - 1, currentIndex + delta))
         coordinator.selectedNoteID = filteredNotes[newIndex].id

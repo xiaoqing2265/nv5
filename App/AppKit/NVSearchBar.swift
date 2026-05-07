@@ -22,13 +22,19 @@ struct NVSearchBar: NSViewRepresentable {
             nsView.stringValue = text
         }
         context.coordinator.parent = self
-        
-        if isFocused {
-            DispatchQueue.main.async {
-                if let window = nsView.window, window.firstResponder != nsView.currentEditor() {
-                    window.makeFirstResponder(nsView)
-                }
-            }
+
+        if isFocused && !context.coordinator.lastIsFocused {
+            requestFocus(field: nsView)
+        }
+        context.coordinator.lastIsFocused = isFocused
+    }
+
+    private func requestFocus(field: NSSearchField) {
+        Task { @MainActor in
+            await Task.yield()
+            guard let window = field.window,
+                  window.firstResponder != field.currentEditor() else { return }
+            window.makeFirstResponder(field)
         }
     }
 
@@ -36,6 +42,7 @@ struct NVSearchBar: NSViewRepresentable {
 
     final class Coordinator: NSObject, NSSearchFieldDelegate {
         var parent: NVSearchBar
+        var lastIsFocused = false
         init(_ parent: NVSearchBar) { self.parent = parent }
 
         func controlTextDidChange(_ obj: Notification) {

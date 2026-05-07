@@ -48,11 +48,48 @@ public final class NoteStore {
 
     public func upsert(_ note: Note) async throws {
         let now = Date()
+        let noteID = note.id
+        let noteTitle = note.title
+        let noteBody = note.body
+        let noteBodyAttributes = note.bodyAttributes
+        let noteLabels = note.labels
+        let notePinned = note.pinned
+        let noteCreatedAt = note.createdAt
+        let noteDeletedLocally = note.deletedLocally
+        let noteEtag = note.etag
+        let noteRemotePath = note.remotePath
+        let noteLastSyncedAt = note.lastSyncedAt
+        let noteLastSelectedRange = note.lastSelectedRange
+        let noteIsEncrypted = note.isEncrypted
+        let modifiedAt = now
+
         try await database.writer.write { db in
-            var toSave = note
-            toSave.modifiedAt = now
-            toSave.localDirty = true
+            var toSave = Note(
+                id: noteID,
+                title: noteTitle,
+                body: noteBody,
+                bodyAttributes: noteBodyAttributes,
+                labels: noteLabels,
+                createdAt: noteCreatedAt,
+                modifiedAt: modifiedAt,
+                lastSelectedRange: noteLastSelectedRange,
+                isEncrypted: noteIsEncrypted,
+                pinned: notePinned,
+                etag: noteEtag,
+                remotePath: noteRemotePath,
+                lastSyncedAt: noteLastSyncedAt,
+                localDirty: true,
+                deletedLocally: noteDeletedLocally
+            )
             try toSave.save(db)
+        }
+        await waitForNote(id: note.id)
+    }
+
+    private func waitForNote(id: UUID) async {
+        for _ in 0..<25 {
+            if notes.contains(where: { $0.id == id }) { return }
+            try? await Task.sleep(for: .milliseconds(10))
         }
     }
 

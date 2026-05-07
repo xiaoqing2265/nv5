@@ -107,8 +107,10 @@ final class AppCoordinator {
         guard !isCreatingNote else { return nil }
         isCreatingNote = true
         defer { isCreatingNote = false }
-        let note = Note(title: query.isEmpty ? "无标题" : query)
+        let title = query.isEmpty ? "无标题" : query
+        let note = Note(title: title)
         try? await store.upsert(note)
+        self.query = ""
         self.selectedNoteID = note.id
         self.focusTarget = .editor
         return note.id

@@ -62,17 +62,6 @@ struct NoteEditor: NSViewRepresentable {
             super.init()
         }
 
-        @MainActor
-        func bringFocus() {
-            guard let textView = textView else { return }
-            Task { @MainActor in
-                await Task.yield()
-                guard let window = textView.window,
-                      window.firstResponder != textView else { return }
-                window.makeFirstResponder(textView)
-            }
-        }
-
         func loadNote(id: UUID, body: String, attributes: Data?, selection: NSRange?) {
             guard let textView = textView else { return }
             

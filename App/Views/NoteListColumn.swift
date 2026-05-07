@@ -65,7 +65,6 @@ struct NoteListColumn: View {
                 coordinator.focusTarget = .searchField
             }
         }
-        .onChange(of: coordinator.query) { _, _ in }
     }
 
     private var refreshKey: String {
@@ -102,7 +101,7 @@ struct NoteListColumn: View {
     }
 
     private func activateOrCreate() {
-        // 优先级 4: 搜索框为空,激活当前选中项
+        // 短路检查:query 为空时直接激活当前选中项
         if coordinator.query.isEmpty {
             if coordinator.selectedNoteID != nil {
                 coordinator.focusTarget = .editor
@@ -110,8 +109,11 @@ struct NoteListColumn: View {
             return
         }
 
-        // 优先级 1: 完全匹配(忽略大小写)
-        let exact = filteredNotes.first { $0.title.caseInsensitiveCompare(coordinator.query) == .orderedSame }
+        // 优先级 1: 全局笔记完全匹配(忽略大小写)
+        let allNotes = coordinator.store?.notes ?? []
+        let exact = allNotes.first {
+            $0.title.caseInsensitiveCompare(coordinator.query) == .orderedSame
+        }
         if let match = exact {
             coordinator.selectedNoteID = match.id
             coordinator.focusTarget = .editor
@@ -121,10 +123,17 @@ struct NoteListColumn: View {
         // 优先级 2: 列表非空,激活虚拟选中项(当前选中或第一条)
         if !filteredNotes.isEmpty {
             let targetID = coordinator.selectedNoteID ?? filteredNotes.first?.id
-            if let id = targetID, filteredNotes.contains(where: { $0.id == id }) {
-                coordinator.selectedNoteID = id
-                coordinator.focusTarget = .editor
-                return
+            if let id = targetID {
+                if coordinator.store?.notes.contains(where: { $0.id == id }) == true {
+                    coordinator.selectedNoteID = id
+                    coordinator.focusTarget = .editor
+                    return
+                }
+                if let first = filteredNotes.first {
+                    coordinator.selectedNoteID = first.id
+                    coordinator.focusTarget = .editor
+                    return
+                }
             }
         }
 
@@ -132,9 +141,7 @@ struct NoteListColumn: View {
         let trimmed = coordinator.query.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
             Task {
-                if let newNoteID = await coordinator.newNote() {
-                    coordinator.selectedNoteID = newNoteID
-                }
+                _ = await coordinator.newNote()
                 await refresh()
             }
         }

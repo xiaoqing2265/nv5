@@ -47,18 +47,79 @@ public final class NoteStore {
     }
 
     public func upsert(_ note: Note) async throws {
-        try await database.writer.write { db in
-            var toSave = note
-            toSave.modifiedAt = Date()
-            toSave.localDirty = true
+        let now = Date()
+        let noteID = note.id
+        let noteTitle = note.title
+        let noteBody = note.body
+        let noteBodyAttributes = note.bodyAttributes
+        let noteLabels = note.labels
+        let notePinned = note.pinned
+        let noteCreatedAt = note.createdAt
+        let noteDeletedLocally = note.deletedLocally
+        let noteEtag = note.etag
+        let noteRemotePath = note.remotePath
+        let noteLastSyncedAt = note.lastSyncedAt
+        let noteLastSelectedRange = note.lastSelectedRange
+        let noteIsEncrypted = note.isEncrypted
+
+        try await database.writer.write { [noteID, noteTitle, noteBody, noteBodyAttributes, noteLabels, notePinned, noteCreatedAt, noteDeletedLocally, noteEtag, noteRemotePath, noteLastSyncedAt, noteLastSelectedRange, noteIsEncrypted, now] db in
+            var toSave = Note(
+                id: noteID,
+                title: noteTitle,
+                body: noteBody,
+                bodyAttributes: noteBodyAttributes,
+                labels: noteLabels,
+                createdAt: noteCreatedAt,
+                modifiedAt: now,
+                lastSelectedRange: noteLastSelectedRange,
+                isEncrypted: noteIsEncrypted,
+                pinned: notePinned,
+                etag: noteEtag,
+                remotePath: noteRemotePath,
+                lastSyncedAt: noteLastSyncedAt,
+                localDirty: true,
+                deletedLocally: noteDeletedLocally
+            )
             try toSave.save(db)
         }
 
-        if let idx = notes.firstIndex(where: { $0.id == note.id }) {
-            notes[idx] = note
+        let savedNote = Note(
+            id: noteID,
+            title: noteTitle,
+            body: noteBody,
+            bodyAttributes: noteBodyAttributes,
+            labels: noteLabels,
+            createdAt: noteCreatedAt,
+            modifiedAt: now,
+            lastSelectedRange: noteLastSelectedRange,
+            isEncrypted: noteIsEncrypted,
+            pinned: notePinned,
+            etag: noteEtag,
+            remotePath: noteRemotePath,
+            lastSyncedAt: noteLastSyncedAt,
+            localDirty: true,
+            deletedLocally: noteDeletedLocally
+        )
+
+        var newNotes = notes
+        if let idx = newNotes.firstIndex(where: { $0.id == savedNote.id }) {
+            newNotes[idx] = savedNote
         } else {
-            notes.insert(note, at: 0)
+            newNotes.insert(savedNote, at: 0)
         }
+        notes = newNotes
+    }
+
+    public func softDelete(id: UUID) async throws {
+        try await database.writer.write { db in
+            guard var note = try Note.fetchOne(db, key: id.uuidString) else { return }
+            note.deletedLocally = true
+            note.modifiedAt = Date()
+            note.localDirty = true
+            try note.update(db)
+        }
+
+        notes = notes.filter { $0.id != id }
     }
 
     public func updateBody(id: UUID, body: String, attributes: Data?, selection: NSRange?) async throws {
@@ -81,17 +142,6 @@ public final class NoteStore {
             note.localDirty = true
             try note.update(db)
         }
-    }
-
-    public func softDelete(id: UUID) async throws {
-        try await database.writer.write { db in
-            guard var note = try Note.fetchOne(db, key: id.uuidString) else { return }
-            note.deletedLocally = true
-            note.modifiedAt = Date()
-            note.localDirty = true
-            try note.update(db)
-        }
-        notes.removeAll { $0.id == id }
     }
 
     public func purgeDeletedAndSynced() async throws {

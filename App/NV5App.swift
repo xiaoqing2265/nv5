@@ -17,13 +17,14 @@ struct NV5App: App {
         WindowGroup {
             MainView()
                 .environment(coordinator)
+                .environment(coordinator.store)
                 .frame(minWidth: 800, minHeight: 500)
                 .onAppear { coordinator.bootstrap() }
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
-CommandGroup(replacing: .newItem) {
+        CommandGroup(replacing: .newItem) {
             Button("新建笔记") { Task { _ = await coordinator.newNote() } }
                 .keyboardShortcut("n", modifiers: .command)
         }
@@ -45,8 +46,8 @@ final class AppCoordinator {
         case none
     }
 
-    var database: Database!
-    var store: NoteStore!
+    var database: Database
+    var store: NoteStore
     var sync: SyncCoordinator?
     var query: String = ""
     var selectedNoteID: UUID?
@@ -55,22 +56,24 @@ final class AppCoordinator {
     private var isBootstrapped = false
 
     @MainActor
-    func bootstrap() {
-        guard !isBootstrapped else { return }
-        isBootstrapped = true
-        
-        // One-time migration to resolve Keychain popups
-        WebDAVSettings.migrateIfNeeded()
-
+    init() {
         let appSupport = try! FileManager.default.url(
             for: .applicationSupportDirectory, in: .userDomainMask,
             appropriateFor: nil, create: true
         ).appendingPathComponent("NV5", isDirectory: true)
         try! FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
-
         let dbURL = appSupport.appendingPathComponent("notes.sqlite")
-        self.database = try! Database(url: dbURL)
-        self.store = NoteStore(database: database)
+        let db = try! Database(url: dbURL)
+        self.database = db
+        self.store = NoteStore(database: db)
+    }
+
+    @MainActor
+    func bootstrap() {
+        guard !isBootstrapped else { return }
+        isBootstrapped = true
+
+        WebDAVSettings.migrateIfNeeded()
 
         configureWebDAVIfAvailable()
         registerHotKey()

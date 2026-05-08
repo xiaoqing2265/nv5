@@ -1,14 +1,16 @@
 import SwiftUI
 import NVModel
+import NVStore
 
 struct EditorColumn: View {
     @Environment(AppCoordinator.self) private var coordinator
+    @Environment(NoteStore.self) private var store
     @FocusState private var editorFocused: Bool
 
     var body: some View {
         Group {
             if let id = coordinator.selectedNoteID,
-               let note = coordinator.store?.notes.first(where: { $0.id == id }) {
+               let note = store.notes.first(where: { $0.id == id }) {
                 editorView(for: note)
                     .onChange(of: coordinator.focusTarget) { _, new in
                         editorFocused = (new == .editor)
@@ -42,7 +44,7 @@ struct EditorColumn: View {
                 onEscape: { coordinator.focusTarget = .searchField },
                 onCommit: { body, attrs, range in
                     Task {
-                        try? await coordinator.store.updateBody(
+                        try? await store.updateBody(
                             id: note.id, body: body, attributes: attrs, selection: range
                         )
                     }
@@ -55,6 +57,7 @@ struct EditorColumn: View {
 
 struct TitleBar: View {
     @Environment(AppCoordinator.self) private var coordinator
+    @Environment(NoteStore.self) private var store
     let note: Note
     @State private var title: String = ""
     @State private var labelInput: String = ""
@@ -75,7 +78,7 @@ struct TitleBar: View {
                         Task {
                             var updated = note
                             updated.labels.remove(label)
-                            try? await coordinator.store?.upsert(updated)
+                            try? await store.upsert(updated)
                         }
                     }
                 }
@@ -106,7 +109,7 @@ struct TitleBar: View {
 
     private func commitTitle() {
         guard title != note.title else { return }
-        Task { try? await coordinator.store?.updateTitle(id: note.id, title: title) }
+        Task { try? await store.updateTitle(id: note.id, title: title) }
     }
 
     private func addLabel() {
@@ -115,7 +118,7 @@ struct TitleBar: View {
         Task {
             var updated = note
             updated.labels.insert(trimmed)
-            try? await coordinator.store?.upsert(updated)
+            try? await store.upsert(updated)
             await MainActor.run { labelInput = "" }
         }
     }

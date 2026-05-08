@@ -1,19 +1,17 @@
 import SwiftUI
 import NVModel
+import NVStore
 
 struct NoteListColumn: View {
     @Environment(AppCoordinator.self) private var coordinator
+    @Environment(NoteStore.self) private var store
     let selectedLabel: String?
     @FocusState private var searchFieldFocused: Bool
 
     private var filteredNotes: [Note] {
-        let store = coordinator.store
-        let base: [Note]
-        if coordinator.query.isEmpty {
-            base = store?.notes ?? []
-        } else {
-            base = store?.search(query: coordinator.query) ?? []
-        }
+        let base: [Note] = coordinator.query.isEmpty
+            ? store.notes
+            : store.search(query: coordinator.query)
         guard let label = selectedLabel else { return base }
         return base.filter { $0.labels.contains(label) }
     }
@@ -96,7 +94,7 @@ struct NoteListColumn: View {
         }
 
         // 优先级 1: 全局笔记完全匹配(忽略大小写)
-        let allNotes = coordinator.store?.notes ?? []
+        let allNotes = store.notes
         let exact = allNotes.first {
             $0.title.caseInsensitiveCompare(coordinator.query) == .orderedSame
         }
@@ -111,7 +109,7 @@ struct NoteListColumn: View {
         if !notes.isEmpty {
             let targetID = coordinator.selectedNoteID ?? notes.first?.id
             if let id = targetID {
-                if coordinator.store?.notes.contains(where: { $0.id == id }) == true {
+                if store.notes.contains(where: { $0.id == id }) {
                     coordinator.selectedNoteID = id
                     coordinator.focusTarget = .editor
                     return
@@ -146,12 +144,12 @@ struct NoteListColumn: View {
         Task {
             var updated = note
             updated.pinned.toggle()
-            try? await coordinator.store?.upsert(updated)
+            try? await store.upsert(updated)
         }
     }
 
     private func delete(_ note: Note) {
-        Task { try? await coordinator.store?.softDelete(id: note.id) }
+        Task { try? await store.softDelete(id: note.id) }
     }
 }
 

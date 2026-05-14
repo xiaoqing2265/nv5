@@ -71,11 +71,15 @@ enum WikiLinkDecorator {
 enum DoneTagDecorator {
     static func decorate(_ storage: NSTextStorage) {
         guard let regex = try? NSRegularExpression(pattern: #"\[(?:done|x|✓)\]"#, options: .caseInsensitive) else { return }
-        let range = NSRange(location: 0, length: storage.length)
-        regex.enumerateMatches(in: storage.string, options: [], range: range) { match, _, _ in
+        let fullRange = NSRange(location: 0, length: storage.length)
+        let nsString = storage.string as NSString
+
+        regex.enumerateMatches(in: storage.string, options: [], range: fullRange) { match, _, _ in
             guard let match = match else { return }
-            storage.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: match.range)
-            storage.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor, range: match.range)
+            // Extend strikethrough to the whole line containing the tag
+            let lineRange = nsString.lineRange(for: match.range)
+            storage.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: lineRange)
+            storage.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor, range: lineRange)
         }
     }
 }

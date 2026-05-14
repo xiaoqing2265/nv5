@@ -1,6 +1,7 @@
 import SwiftUI
 import NVModel
 import NVStore
+import NVKit
 
 struct EditorColumn: View {
     @Environment(AppCoordinator.self) private var coordinator
@@ -21,10 +22,10 @@ struct EditorColumn: View {
                         }
                     }
             } else {
-                ContentUnavailableView(
-                    "选择或创建笔记",
+                EmptyStateView(
+                    title: "选择或创建笔记",
                     systemImage: "doc.text",
-                    description: Text("在上方搜索栏输入；按回车以该标题创建新笔记。")
+                    description: "在上方搜索栏输入；按回车以该标题创建新笔记。"
                 )
             }
         }
@@ -42,11 +43,15 @@ struct EditorColumn: View {
                 highlightQuery: coordinator.query,
                 focusRequest: coordinator.focusTarget == .editor,
                 onEscape: { coordinator.focusTarget = .searchField },
-                onCommit: { body, attrs, range in
+                onCommit: { id, body, attrs, range in
                     Task {
-                        try? await store.updateBody(
-                            id: note.id, body: body, attributes: attrs, selection: range
-                        )
+                        do {
+                            try await store.updateBody(
+                                id: id, body: body, attributes: attrs, selection: range
+                            )
+                        } catch {
+                            print("[NV5] Failed to save note body (id=\(id)): \(error)")
+                        }
                     }
                 }
             )
@@ -66,7 +71,7 @@ struct TitleBar: View {
         VStack(alignment: .leading, spacing: 6) {
             TextField("Title", text: $title)
                 .textFieldStyle(.plain)
-                .font(.title2.weight(.semibold))
+                .font(NVTheme.Fonts.editorTitle)
                 .onSubmit { commitTitle() }
                 .onChange(of: title) { _, _ in
                     debouncedCommit()
@@ -74,13 +79,13 @@ struct TitleBar: View {
 
             HStack(spacing: 6) {
                 ForEach(Array(note.labels), id: \.self) { label in
-                    LabelChipView(label: label) {
+                    LabelChip(label, style: .removable {
                         Task {
                             var updated = note
                             updated.labels.remove(label)
                             try? await store.upsert(updated)
                         }
-                    }
+                    })
                 }
                 TextField("Add label…", text: $labelInput)
                     .textFieldStyle(.plain)
@@ -90,7 +95,7 @@ struct TitleBar: View {
             }
             .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, NVTheme.Metrics.editorContentInset)
         .padding(.vertical, 8)
         .onAppear { title = note.title }
         .onChange(of: note.id) { _, _ in title = note.title }
@@ -121,23 +126,5 @@ struct TitleBar: View {
             try? await store.upsert(updated)
             await MainActor.run { labelInput = "" }
         }
-    }
-}
-
-struct LabelChipView: View {
-    let label: String
-    let onRemove: () -> Void
-
-    var body: some View {
-        HStack(spacing: 2) {
-            Text(label).font(.caption)
-            Button(action: onRemove) {
-                Image(systemName: "xmark").font(.caption2)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-        .background(.quaternary, in: Capsule())
     }
 }

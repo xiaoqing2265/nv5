@@ -38,18 +38,6 @@ public final class Database {
                 t.column("localDirty", .boolean).notNull().defaults(to: true)
                 t.column("deletedLocally", .boolean).notNull().defaults(to: false)
             }
-
-            try db.create(virtualTable: "note_fts", using: FTS5()) { t in
-                t.synchronize(withTable: "note")
-                t.tokenizer = .porter(wrapping: .unicode61())
-                t.column("title")
-                t.column("body")
-                t.column("labelsJSON")
-            }
-        }
-
-        migrator.registerMigration("v2") { db in
-            try db.execute(sql: "DROP TABLE IF EXISTS note_fts")
         }
 
         try migrator.migrate(writer)
@@ -81,7 +69,10 @@ extension Note: FetchableRecord, MutablePersistableRecord {
     public init(row: Row) throws {
         var note = Note()
         let idStr: String = row[Columns.id]
-        note.id = UUID(uuidString: idStr)!
+        guard let noteID = UUID(uuidString: idStr) else {
+            throw DatabaseError.invalidNoteID
+        }
+        note.id = noteID
         note.title = row[Columns.title]
         note.body = row[Columns.body]
         note.bodyAttributes = row[Columns.bodyAttributes]
@@ -125,10 +116,6 @@ extension Note: FetchableRecord, MutablePersistableRecord {
         container[Columns.localDirty] = localDirty
         container[Columns.deletedLocally] = deletedLocally
     }
-}
-
-struct NoteFTS: TableRecord {
-    static let databaseTableName = "note_fts"
 }
 
 enum DatabaseError: Error {

@@ -82,32 +82,6 @@ public final class NoteStore {
             )
             try toSave.save(db)
         }
-
-        let savedNote = Note(
-            id: noteID,
-            title: noteTitle,
-            body: noteBody,
-            bodyAttributes: noteBodyAttributes,
-            labels: noteLabels,
-            createdAt: noteCreatedAt,
-            modifiedAt: now,
-            lastSelectedRange: noteLastSelectedRange,
-            isEncrypted: noteIsEncrypted,
-            pinned: notePinned,
-            etag: noteEtag,
-            remotePath: noteRemotePath,
-            lastSyncedAt: noteLastSyncedAt,
-            localDirty: true,
-            deletedLocally: noteDeletedLocally
-        )
-
-        var newNotes = notes
-        if let idx = newNotes.firstIndex(where: { $0.id == savedNote.id }) {
-            newNotes[idx] = savedNote
-        } else {
-            newNotes.insert(savedNote, at: 0)
-        }
-        notes = newNotes
     }
 
     public func softDelete(id: UUID) async throws {
@@ -118,8 +92,6 @@ public final class NoteStore {
             note.localDirty = true
             try note.update(db)
         }
-
-        notes = notes.filter { $0.id != id }
     }
 
     public func updateBody(id: UUID, body: String, attributes: Data?, selection: NSRange?) async throws {

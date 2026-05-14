@@ -20,7 +20,6 @@ public struct SyncStatusIndicator: View {
         Button(action: onClick) {
             content
         }
-        .buttonStyle(.borderless)
     }
 
     @ViewBuilder

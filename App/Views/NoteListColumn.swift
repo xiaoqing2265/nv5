@@ -1,6 +1,7 @@
 import SwiftUI
 import NVModel
 import NVStore
+import NVKit
 
 struct NoteListColumn: View {
     @Environment(AppCoordinator.self) private var coordinator
@@ -41,37 +42,61 @@ struct NoteListColumn: View {
 
             Divider()
 
-            List(selection: Binding(
-                get: { coordinator.selectedNoteID },
-                set: { coordinator.selectedNoteID = $0 }
-            )) {
-                ForEach(filteredNotes) { note in
-                    NoteRow(note: note)
-                        .tag(Optional(note.id))
-                        .contextMenu {
-                            Button("Pin", systemImage: "pin") { togglePin(note) }
-                            Button("Delete", systemImage: "trash", role: .destructive) {
-                                delete(note)
+            ScrollViewReader { proxy in
+                List(selection: Binding(
+                    get: { coordinator.selectedNoteID },
+                    set: { coordinator.selectedNoteID = $0 }
+                )) {
+                    ForEach(filteredNotes) { note in
+                        NoteRow(note: note)
+                            .tag(Optional(note.id))
+                            .contextMenu {
+                                Button("Delete", systemImage: "trash", role: .destructive) {
+                                    delete(note)
+                                }
+                            }
+                    }
+                }
+                .listStyle(.inset)
+                .onDeleteCommand {
+                    let notes = filteredNotes
+                    if let id = coordinator.selectedNoteID,
+                       let note = notes.first(where: { $0.id == id }) {
+                        delete(note)
+                    }
+                }
+                .onChange(of: filteredNotes) { _, newNotes in
+                    // If a note was just created, wait for it to appear in the list
+                    if let createdID = coordinator.recentlyCreatedNoteID {
+                        if newNotes.contains(where: { $0.id == createdID }) {
+                            // New note has appeared via ValueObservation — select it and clear flag
+                            coordinator.selectedNoteID = createdID
+                            coordinator.recentlyCreatedNoteID = nil
+                            // Re-trigger focus: editor wasn't rendered when focusTarget was first set,
+                            // so onChange(focusTarget) missed it. Toggle to force a change event.
+                            coordinator.focusTarget = .none
+                            coordinator.focusTarget = .editor
+                            
+                            // 强制滚动到新建的笔记，避免 SwiftUI List 从空变满时的滚动偏移 bug
+                            Task { @MainActor in
+                                try? await Task.sleep(nanoseconds: 50_000_000)
+                                withAnimation {
+                                    proxy.scrollTo(Optional(createdID), anchor: .top)
+                                }
                             }
                         }
+                        // Either way, don't override selection while waiting for the new note
+                        return
+                    }
+
+                    if let currentID = coordinator.selectedNoteID {
+                        if !newNotes.contains(where: { $0.id == currentID }) {
+                            coordinator.selectedNoteID = newNotes.first?.id
+                        }
+                    } else {
+                        coordinator.selectedNoteID = newNotes.first?.id
+                    }
                 }
-            }
-            .listStyle(.inset)
-            .onDeleteCommand {
-                let notes = filteredNotes
-                if let id = coordinator.selectedNoteID,
-                   let note = notes.first(where: { $0.id == id }) {
-                    delete(note)
-                }
-            }
-        }
-        .onChange(of: filteredNotes) { _, newNotes in
-            if let currentID = coordinator.selectedNoteID {
-                if !newNotes.contains(where: { $0.id == currentID }) {
-                    coordinator.selectedNoteID = newNotes.first?.id
-                }
-            } else {
-                coordinator.selectedNoteID = newNotes.first?.id
             }
         }
         .onChange(of: coordinator.focusTarget) { _, new in
@@ -93,32 +118,26 @@ struct NoteListColumn: View {
             return
         }
 
-        // 优先级 1: 全局笔记完全匹配(忽略大小写)
-        let allNotes = store.notes
-        let exact = allNotes.first {
+        let notes = filteredNotes
+
+        // 优先级 1: 当前列表内的完全匹配
+        if let exact = notes.first(where: {
             $0.title.caseInsensitiveCompare(coordinator.query) == .orderedSame
-        }
-        if let match = exact {
-            coordinator.selectedNoteID = match.id
+        }) {
+            coordinator.selectedNoteID = exact.id
             coordinator.focusTarget = .editor
             return
         }
 
         // 优先级 2: 列表非空,激活虚拟选中项(当前选中或第一条)
-        let notes = filteredNotes
         if !notes.isEmpty {
-            let targetID = coordinator.selectedNoteID ?? notes.first?.id
+            let targetID = coordinator.selectedNoteID
+                .flatMap { id in notes.first(where: { $0.id == id })?.id }
+                ?? notes.first?.id
             if let id = targetID {
-                if store.notes.contains(where: { $0.id == id }) {
-                    coordinator.selectedNoteID = id
-                    coordinator.focusTarget = .editor
-                    return
-                }
-                if let first = notes.first {
-                    coordinator.selectedNoteID = first.id
-                    coordinator.focusTarget = .editor
-                    return
-                }
+                coordinator.selectedNoteID = id
+                coordinator.focusTarget = .editor
+                return
             }
         }
 
@@ -140,13 +159,7 @@ struct NoteListColumn: View {
         coordinator.selectedNoteID = notes[newIndex].id
     }
 
-    private func togglePin(_ note: Note) {
-        Task {
-            var updated = note
-            updated.pinned.toggle()
-            try? await store.upsert(updated)
-        }
-    }
+
 
     private func delete(_ note: Note) {
         Task { try? await store.softDelete(id: note.id) }
@@ -158,28 +171,24 @@ struct NoteRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            if note.pinned {
-                Image(systemName: "pin.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
-            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(note.title.isEmpty ? "Untitled" : note.title)
-                    .font(.system(.body, design: .default, weight: .medium))
+                    .font(NVTheme.Fonts.listTitle)
                     .lineLimit(1)
-                Text(note.body.replacingOccurrences(of: "\n", with: " ").prefix(120))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                let snippet = note.body.trimmingCharacters(in: .whitespacesAndNewlines)
+                Text(snippet.isEmpty ? "无正文" : snippet.snippet(maxLength: 120))
+                    .font(NVTheme.Fonts.listSnippet)
+                    .foregroundStyle(snippet.isEmpty ? .quaternary : .secondary)
                     .lineLimit(2)
-                Text(note.modifiedAt.formatted(.relative(presentation: .named)))
-                    .font(.caption2)
+                RelativeTimeText(note.modifiedAt)
+                    .font(NVTheme.Fonts.listMeta)
                     .foregroundStyle(.tertiary)
             }
             Spacer(minLength: 0)
             if note.localDirty {
-                Circle().fill(.blue).frame(width: 6, height: 6)
+                DirtyDot()
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, NVTheme.Metrics.listRowVerticalPadding)
     }
 }

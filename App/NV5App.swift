@@ -52,20 +52,35 @@ final class AppCoordinator {
     var query: String = ""
     var selectedNoteID: UUID?
     var focusTarget: FocusTarget = .none
+    /// Set after newNote() to prevent onChange(filteredNotes) from overriding selection
+    /// before ValueObservation has propagated the new note to store.notes
+    var recentlyCreatedNoteID: UUID?
     private var isCreatingNote = false
     private var isBootstrapped = false
 
     @MainActor
     init() {
-        let appSupport = try! FileManager.default.url(
-            for: .applicationSupportDirectory, in: .userDomainMask,
-            appropriateFor: nil, create: true
-        ).appendingPathComponent("NV5", isDirectory: true)
-        try! FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
-        let dbURL = appSupport.appendingPathComponent("notes.sqlite")
-        let db = try! Database(url: dbURL)
-        self.database = db
-        self.store = NoteStore(database: db)
+        do {
+            let appSupport = try FileManager.default.url(
+                for: .applicationSupportDirectory, in: .userDomainMask,
+                appropriateFor: nil, create: true
+            ).appendingPathComponent("NV5", isDirectory: true)
+            try FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
+            let dbURL = appSupport.appendingPathComponent("notes.sqlite")
+            let db = try Database(url: dbURL)
+            self.database = db
+            self.store = NoteStore(database: db)
+        } catch {
+            let alert = NSAlert()
+            alert.alertStyle = .critical
+            alert.messageText = "NV5 无法启动"
+            alert.informativeText = "数据库初始化失败，请检查磁盘空间或权限后重试。\n\n错误详情：\(error.localizedDescription)"
+            alert.addButton(withTitle: "退出")
+            alert.runModal()
+            NSApp.terminate(nil)
+            // 满足编译器要求：此路径实际不会执行
+            fatalError("Unreachable after NSApp.terminate")
+        }
     }
 
     @MainActor
@@ -107,21 +122,38 @@ final class AppCoordinator {
 
     @MainActor
     func newNote() async -> UUID? {
-        guard !isCreatingNote else { return nil }
+        guard !isCreatingNote else {
+            return nil
+        }
         isCreatingNote = true
         defer { isCreatingNote = false }
         let title = query.isEmpty ? "无标题" : query
         let note = Note(title: title)
-        try? await store.upsert(note)
-        self.query = ""
+        do {
+            try await store.upsert(note)
+        } catch {
+            print("[NV5] Failed to create note: \(error)")
+            return nil
+        }
+        // Set selection BEFORE clearing query, so onChange(of: filteredNotes)
+        // sees the new note ID and doesn't override it with the first item
+        self.recentlyCreatedNoteID = note.id
         self.selectedNoteID = note.id
         self.focusTarget = .editor
+        self.query = ""
         return note.id
     }
 
     @MainActor
     func triggerSync() {
-        Task { try? await sync?.sync() }
+        Task {
+            do {
+                try await sync?.sync()
+            } catch {
+                // sync.status is already updated to .error inside sync()
+                print("[NV5] Sync failed: \(error)")
+            }
+        }
     }
 
     @MainActor

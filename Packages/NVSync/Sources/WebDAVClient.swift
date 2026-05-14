@@ -34,7 +34,15 @@ public struct WebDAVResource: Sendable {
     }
 }
 
-public actor WebDAVClient {
+public protocol WebDAVClientProtocol: Sendable {
+    func upload(path: String, data: Data, ifMatch etag: String?) async throws -> String?
+    func download(path: String, ifNoneMatch etag: String?) async throws -> (Data, String?)?
+    func listDirectory(path: String) async throws -> [WebDAVResource]
+    func ensureDirectory(_ path: String) async throws
+    func delete(path: String, ifMatch etag: String?) async throws
+}
+
+public actor WebDAVClient: WebDAVClientProtocol {
     private let config: WebDAVConfig
     private let session: URLSession
     private var password: String
@@ -44,15 +52,6 @@ public actor WebDAVClient {
         self.password = password
         let cfg = URLSessionConfiguration.ephemeral
         cfg.timeoutIntervalForRequest = 30
-        let credential = URLCredential(user: config.username, password: password, persistence: .forSession)
-        let protectionSpace = URLProtectionSpace(
-            host: config.serverURL.host ?? "",
-            port: config.serverURL.port ?? (config.serverURL.scheme == "https" ? 443 : 80),
-            protocol: config.serverURL.scheme,
-            realm: nil,
-            authenticationMethod: NSURLAuthenticationMethodHTTPBasic
-        )
-        URLCredentialStorage.shared.setDefaultCredential(credential, for: protectionSpace)
         self.session = URLSession(configuration: cfg)
     }
 

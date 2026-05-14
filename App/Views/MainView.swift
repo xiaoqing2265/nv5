@@ -7,6 +7,7 @@ struct MainView: View {
     @Environment(AppCoordinator.self) private var coordinator
     @State private var visibility: NavigationSplitViewVisibility = .doubleColumn
     @State private var selectedLabel: String? = nil
+    @AppStorage("isWindowPinned") private var isWindowPinned: Bool = false
 
     var body: some View {
         NavigationSplitView(columnVisibility: $visibility) {
@@ -20,6 +21,24 @@ struct MainView: View {
         }
         .navigationSplitViewStyle(.balanced)
         .toolbar { toolbarContent }
+        .onChange(of: isWindowPinned) { _, newValue in
+            updateWindowLevel(newValue)
+        }
+        .onAppear {
+            if isWindowPinned {
+                // Yield briefly to let window initialize before setting level
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 100_000_000)
+                    updateWindowLevel(isWindowPinned)
+                }
+            }
+        }
+    }
+    
+    private func updateWindowLevel(_ isPinned: Bool) {
+        for window in NSApp.windows where window.isKeyWindow || window.isMainWindow {
+            window.level = isPinned ? .floating : .normal
+        }
     }
 
     @ToolbarContentBuilder
@@ -30,6 +49,14 @@ struct MainView: View {
             } label: {
                 Label("新建笔记", systemImage: "square.and.pencil")
             }
+        }
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                isWindowPinned.toggle()
+            } label: {
+                Label(isWindowPinned ? "取消窗口前置" : "窗口前置", systemImage: isWindowPinned ? "pin.fill" : "pin")
+            }
+            .foregroundStyle(isWindowPinned ? .orange : .secondary)
         }
         ToolbarItem(placement: .primaryAction) {
             SyncStatusButton()

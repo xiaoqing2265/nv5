@@ -10,7 +10,7 @@ struct NoteEditor: NSViewRepresentable {
     let highlightQuery: String
     var focusRequest: Bool
     var onEscape: () -> Void
-    let onCommit: (String, Data?, NSRange?) -> Void
+    let onCommit: (UUID, String, Data?, NSRange?) -> Void
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSTextView.scrollableTextView()
@@ -64,6 +64,8 @@ struct NoteEditor: NSViewRepresentable {
         private var saveTask: Task<Void, Never>?
         private var undoManagers: [UUID: UndoManager] = [:]
 
+        var isDirty: Bool = false
+
         init(parent: NoteEditor) {
             self.parent = parent
             self.lastFocusRequest = false
@@ -86,6 +88,7 @@ struct NoteEditor: NSViewRepresentable {
             
             commitPendingIfNeeded()
             currentNoteID = id
+            isDirty = false // Reset dirty flag for newly loaded note
 
             let attributed: NSAttributedString
             if let data = attributes,
@@ -113,7 +116,13 @@ struct NoteEditor: NSViewRepresentable {
 
             let undo = undoManagers[id] ?? UndoManager()
             undoManagers[id] = undo
-            
+
+            // Keep at most 10 undo managers to prevent unbounded memory growth
+            if undoManagers.count > 10 {
+                let oldest = undoManagers.keys.filter { $0 != id }.dropLast(9)
+                oldest.forEach { undoManagers.removeValue(forKey: $0) }
+            }
+
             if let storage = textView.textStorage {
                 TextDecoratorPipeline.runAll(on: storage)
             }
@@ -121,14 +130,17 @@ struct NoteEditor: NSViewRepresentable {
 
         func textDidChange(_ notification: Notification) {
             guard let textView = textView else { return }
+            isDirty = true
             saveTask?.cancel()
             saveTask = Task { [weak self] in
                 try? await Task.sleep(nanoseconds: 300_000_000)
                 guard !Task.isCancelled else { return }
-                await MainActor.run { self?.commitPendingIfNeeded() }
-            }
-            if let storage = textView.textStorage {
-                TextDecoratorPipeline.runAll(on: storage)
+                await MainActor.run { 
+                    if let storage = textView.textStorage {
+                        TextDecoratorPipeline.runAll(on: storage)
+                    }
+                    self?.commitPendingIfNeeded() 
+                }
             }
         }
 
@@ -145,15 +157,19 @@ struct NoteEditor: NSViewRepresentable {
         }
 
         func commitPendingIfNeeded() {
-            guard let textView = textView,
+            guard isDirty,
+                  let id = currentNoteID,
+                  let textView = textView,
                   let storage = textView.textStorage else { return }
+            
             let plain = storage.string
             let rtfd = try? storage.data(
                 from: NSRange(location: 0, length: storage.length),
                 documentAttributes: [.documentType: NSAttributedString.DocumentType.rtfd]
             )
             let selection = textView.selectedRange()
-            parent.onCommit(plain, rtfd, selection)
+            parent.onCommit(id, plain, rtfd, selection)
+            isDirty = false
         }
 
         func applyHighlight(query: String) {

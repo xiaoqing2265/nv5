@@ -115,15 +115,18 @@ struct WebDAVSettingsView: View {
 
     private func save() async {
         guard let config = makeConfig() else { return }
-        
+
         // Preserve existing sync master key if available, otherwise generate new
         let existing = WebDAVSettings.load()
         let masterKey = existing?.syncMasterKey ?? Data((0..<32).map { _ in UInt8.random(in: 0...255) }).base64EncodedString()
-        
+
         let credentials = WebDAVCredentials(config: config, password: password, syncMasterKey: masterKey)
-        try? WebDAVSettings.save(credentials)
-        
-        coordinator.reconfigureSync()
-        testResult = "✓ 已保存"
+        do {
+            try WebDAVSettings.save(credentials)
+            coordinator.reconfigureSync()
+            testResult = "✓ 已保存"
+        } catch {
+            testResult = "✗ 保存失败：\(error.localizedDescription)"
+        }
     }
 }

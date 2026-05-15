@@ -43,19 +43,25 @@ struct GeneralSettings: View {
 
 struct WebDAVSettingsView: View {
     @Environment(AppCoordinator.self) private var coordinator
-    @State private var serverURL: String = ""
+    @State private var serverInput: String = ""
     @State private var username: String = ""
     @State private var password: String = ""
     @State private var basePath: String = "NV5"
     @State private var testResult: String?
     @State private var isTesting = false
 
+    private var parsedURL: URL? {
+        ServerURLParser.parse(serverInput)
+    }
+
     var body: some View {
         Form {
             Section("服务器") {
-                TextField("服务器地址", text: $serverURL,
-                         prompt: Text("https://dav.example.com/dav/"))
+                TextField("服务器地址", text: $serverInput,
+                         prompt: Text("192.168.1.1:5005 或 dav.example.com"))
                     .textContentType(.URL)
+                    .autocorrectionDisabled()
+
                 TextField("用户名", text: $username)
                     .textContentType(.username)
                 SecureField("密码", text: $password)
@@ -63,13 +69,24 @@ struct WebDAVSettingsView: View {
                 TextField("文件夹路径", text: $basePath, prompt: Text("NV5"))
             }
 
+            if let url = parsedURL {
+                let previewPath = basePath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                Text("将连接到：\(url.absoluteString)/\(previewPath)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if !serverInput.isEmpty {
+                Text("无法识别的地址格式")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+
             Section {
                 HStack {
                     Button("测试连接") { Task { await testConnection() } }
-                        .disabled(isTesting || serverURL.isEmpty)
+                        .disabled(isTesting || parsedURL == nil)
                     Button("保存并同步") { Task { await save() } }
                         .keyboardShortcut(.defaultAction)
-                        .disabled(serverURL.isEmpty || username.isEmpty)
+                        .disabled(parsedURL == nil || username.isEmpty)
                     Spacer()
                     if isTesting { ProgressView().controlSize(.small) }
                 }
@@ -86,15 +103,23 @@ struct WebDAVSettingsView: View {
 
     private func loadCurrent() {
         guard let credentials = WebDAVSettings.load() else { return }
-        serverURL = credentials.config.serverURL.absoluteString
+        let url = credentials.config.serverURL
+        let port = url.port.map { ":\($0)" } ?? ""
+        serverInput = "\(url.host ?? "")\(port)"
         username = credentials.config.username
         basePath = credentials.config.basePath
         password = credentials.password
     }
 
     private func makeConfig() -> WebDAVConfig? {
-        guard let url = URL(string: serverURL) else { return nil }
-        return WebDAVConfig(serverURL: url, username: username, basePath: basePath, allowsInsecure: false)
+        guard let url = parsedURL else { return nil }
+        let cleanBasePath = basePath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return WebDAVConfig(
+            serverURL: url,
+            username: username,
+            basePath: cleanBasePath,
+            allowsInsecure: url.scheme == "http"
+        )
     }
 
     private func testConnection() async {
@@ -105,7 +130,7 @@ struct WebDAVSettingsView: View {
         defer { isTesting = false }
         let client = WebDAVClient(config: config, password: password)
         do {
-            try await client.ensureDirectory(config.basePath)
+            try await client.ensureBasePath()
             _ = try await client.listDirectory(path: "")
             testResult = "✓ 连接成功"
         } catch {
@@ -116,7 +141,6 @@ struct WebDAVSettingsView: View {
     private func save() async {
         guard let config = makeConfig() else { return }
 
-        // Preserve existing sync master key if available, otherwise generate new
         let existing = WebDAVSettings.load()
         let masterKey = existing?.syncMasterKey ?? Data((0..<32).map { _ in UInt8.random(in: 0...255) }).base64EncodedString()
 

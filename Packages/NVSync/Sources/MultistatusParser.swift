@@ -56,7 +56,7 @@ enum MultistatusParser {
             case "href":
                 currentHref = trimmed.removingPercentEncoding
             case "getetag":
-                currentEtag = trimmed.trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+                currentEtag = normalizeETag(trimmed)
             case "getlastmodified":
                 currentLastModified = httpDateFormatter.date(from: trimmed)
             case "getcontentlength":

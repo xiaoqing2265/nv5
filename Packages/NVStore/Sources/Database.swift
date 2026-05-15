@@ -31,12 +31,16 @@ public final class Database {
                 t.column("lastSelectedLocation", .integer)
                 t.column("lastSelectedLength", .integer)
                 t.column("isEncrypted", .boolean).notNull().defaults(to: false)
-                t.column("pinned", .boolean).notNull().defaults(to: false)
                 t.column("etag", .text)
                 t.column("remotePath", .text).unique()
                 t.column("lastSyncedAt", .datetime)
                 t.column("localDirty", .boolean).notNull().defaults(to: true)
                 t.column("deletedLocally", .boolean).notNull().defaults(to: false)
+            }
+
+            try db.create(table: "applied_tombstone") { t in
+                t.column("id", .text).primaryKey()
+                t.column("appliedAt", .datetime).notNull()
             }
         }
 
@@ -58,7 +62,6 @@ extension Note: FetchableRecord, MutablePersistableRecord {
         public static let lastSelectedLocation = Column("lastSelectedLocation")
         public static let lastSelectedLength = Column("lastSelectedLength")
         public static let isEncrypted = Column("isEncrypted")
-        public static let pinned = Column("pinned")
         public static let etag = Column("etag")
         public static let remotePath = Column("remotePath")
         public static let lastSyncedAt = Column("lastSyncedAt")
@@ -88,7 +91,6 @@ extension Note: FetchableRecord, MutablePersistableRecord {
             note.lastSelectedRange = NSRange(location: l, length: le)
         }
         note.isEncrypted = row[Columns.isEncrypted]
-        note.pinned = row[Columns.pinned]
         note.etag = row[Columns.etag]
         note.remotePath = row[Columns.remotePath]
         note.lastSyncedAt = row[Columns.lastSyncedAt]
@@ -109,7 +111,6 @@ extension Note: FetchableRecord, MutablePersistableRecord {
         container[Columns.lastSelectedLocation] = lastSelectedRange?.location
         container[Columns.lastSelectedLength] = lastSelectedRange?.length
         container[Columns.isEncrypted] = isEncrypted
-        container[Columns.pinned] = pinned
         container[Columns.etag] = etag
         container[Columns.remotePath] = remotePath
         container[Columns.lastSyncedAt] = lastSyncedAt

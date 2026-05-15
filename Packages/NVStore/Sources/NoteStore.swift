@@ -27,7 +27,7 @@ public final class NoteStore {
             let observation = ValueObservation.tracking { db in
                 try Note
                     .filter(Note.Columns.deletedLocally == false)
-                    .order(Note.Columns.pinned.desc, Note.Columns.modifiedAt.desc)
+                    .order(Note.Columns.modifiedAt.desc)
                     .fetchAll(db)
             }
 
@@ -53,7 +53,6 @@ public final class NoteStore {
         let noteBody = note.body
         let noteBodyAttributes = note.bodyAttributes
         let noteLabels = note.labels
-        let notePinned = note.pinned
         let noteCreatedAt = note.createdAt
         let noteDeletedLocally = note.deletedLocally
         let noteEtag = note.etag
@@ -62,7 +61,7 @@ public final class NoteStore {
         let noteLastSelectedRange = note.lastSelectedRange
         let noteIsEncrypted = note.isEncrypted
 
-        try await database.writer.write { [noteID, noteTitle, noteBody, noteBodyAttributes, noteLabels, notePinned, noteCreatedAt, noteDeletedLocally, noteEtag, noteRemotePath, noteLastSyncedAt, noteLastSelectedRange, noteIsEncrypted, now] db in
+        try await database.writer.write { [noteID, noteTitle, noteBody, noteBodyAttributes, noteLabels, noteCreatedAt, noteDeletedLocally, noteEtag, noteRemotePath, noteLastSyncedAt, noteLastSelectedRange, noteIsEncrypted, now] db in
             var toSave = Note(
                 id: noteID,
                 title: noteTitle,
@@ -73,7 +72,6 @@ public final class NoteStore {
                 modifiedAt: now,
                 lastSelectedRange: noteLastSelectedRange,
                 isEncrypted: noteIsEncrypted,
-                pinned: notePinned,
                 etag: noteEtag,
                 remotePath: noteRemotePath,
                 lastSyncedAt: noteLastSyncedAt,
@@ -140,7 +138,6 @@ public final class NoteStore {
         }
 
         return matched.sorted { lhs, rhs in
-            if lhs.pinned != rhs.pinned { return lhs.pinned }
             let lhsTitleHit = tokens.allSatisfy {
                 lhs.title.range(of: $0, options: .caseInsensitive) != nil
             }
@@ -158,7 +155,7 @@ public final class NoteStore {
         }
     }
 
-    public func markSynced(id: UUID, etag: String, remotePath: String) async throws {
+    public func markSynced(id: UUID, etag: String?, remotePath: String) async throws {
         try await database.writer.write { db in
             guard var note = try Note.fetchOne(db, key: id.uuidString) else { return }
             note.etag = etag
@@ -166,6 +163,25 @@ public final class NoteStore {
             note.lastSyncedAt = Date()
             note.localDirty = false
             try note.update(db)
+        }
+    }
+
+    public func appliedTombstoneIDs() async throws -> Set<UUID> {
+        try await database.writer.read { db in
+            let rows = try Row.fetchAll(db, sql: "SELECT id FROM applied_tombstone")
+            return Set(rows.compactMap { (row: Row) -> UUID? in
+                let s: String = row["id"]
+                return UUID(uuidString: s)
+            })
+        }
+    }
+
+    public func markTombstoneApplied(_ id: UUID) async throws {
+        try await database.writer.write { db in
+            try db.execute(
+                sql: "INSERT OR IGNORE INTO applied_tombstone (id, appliedAt) VALUES (?, ?)",
+                arguments: [id.uuidString, Date()]
+            )
         }
     }
 }

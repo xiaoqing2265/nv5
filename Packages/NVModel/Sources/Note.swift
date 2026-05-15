@@ -10,7 +10,6 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
     public var modifiedAt: Date
     public var lastSelectedRange: NSRange?
     public var isEncrypted: Bool
-    public var pinned: Bool
     public var etag: String?
     public var remotePath: String?
     public var lastSyncedAt: Date?
@@ -27,7 +26,6 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
         modifiedAt: Date = Date(),
         lastSelectedRange: NSRange? = nil,
         isEncrypted: Bool = false,
-        pinned: Bool = false,
         etag: String? = nil,
         remotePath: String? = nil,
         lastSyncedAt: Date? = nil,
@@ -43,7 +41,6 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
         self.modifiedAt = modifiedAt
         self.lastSelectedRange = lastSelectedRange
         self.isEncrypted = isEncrypted
-        self.pinned = pinned
         self.etag = etag
         self.remotePath = remotePath
         self.lastSyncedAt = lastSyncedAt
@@ -55,7 +52,7 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
         case id, title, body, bodyAttributes, labels
         case createdAt, modifiedAt
         case lastSelectedLocation, lastSelectedLength
-        case isEncrypted, pinned
+        case isEncrypted
         case etag, remotePath, lastSyncedAt, localDirty, deletedLocally
     }
 
@@ -76,7 +73,6 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
             lastSelectedRange = nil
         }
         isEncrypted = try container.decode(Bool.self, forKey: .isEncrypted)
-        pinned = try container.decode(Bool.self, forKey: .pinned)
         etag = try container.decodeIfPresent(String.self, forKey: .etag)
         remotePath = try container.decodeIfPresent(String.self, forKey: .remotePath)
         lastSyncedAt = try container.decodeIfPresent(Date.self, forKey: .lastSyncedAt)
@@ -96,7 +92,6 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
         try container.encodeIfPresent(lastSelectedRange?.location, forKey: .lastSelectedLocation)
         try container.encodeIfPresent(lastSelectedRange?.length, forKey: .lastSelectedLength)
         try container.encode(isEncrypted, forKey: .isEncrypted)
-        try container.encode(pinned, forKey: .pinned)
         try container.encodeIfPresent(etag, forKey: .etag)
         try container.encodeIfPresent(remotePath, forKey: .remotePath)
         try container.encodeIfPresent(lastSyncedAt, forKey: .lastSyncedAt)

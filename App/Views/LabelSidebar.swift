@@ -4,7 +4,7 @@ import NVStore
 struct LabelSidebar: View {
     @Environment(AppCoordinator.self) private var coordinator
     @Environment(NoteStore.self) private var store
-    @Binding var selectedLabel: String?
+    @Binding var selectedItem: SidebarItem
 
     private var allLabels: [(name: String, count: Int)] {
         let counts = store.notes.reduce(into: [String: Int]()) { dict, note in
@@ -14,10 +14,12 @@ struct LabelSidebar: View {
     }
 
     var body: some View {
-        List(selection: $selectedLabel) {
+        List(selection: $selectedItem) {
             Section {
                 Label("所有笔记", systemImage: "tray.full")
-                    .tag(String?.none)
+                    .tag(SidebarItem.all)
+                Label("已归档", systemImage: "archivebox")
+                    .tag(SidebarItem.archived)
             }
             Section("标签") {
                 ForEach(allLabels, id: \.name) { item in
@@ -28,7 +30,7 @@ struct LabelSidebar: View {
                             .foregroundStyle(.secondary)
                             .font(.caption)
                     }
-                    .tag(String?.some(item.name))
+                    .tag(SidebarItem.label(item.name))
                 }
             }
         }

@@ -113,7 +113,7 @@ public actor WebDAVClient: WebDAVClientProtocol {
             request.setValue(authHeader(), forHTTPHeaderField: "Authorization")
             let (_, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse else { throw WebDAVError.invalidResponse }
-            guard http.statusCode == 201 || http.statusCode == 405 else {
+            guard http.statusCode == 201 || http.statusCode == 405 || http.statusCode == 409 else {
                 throw WebDAVError.httpError(http.statusCode)
             }
         }
@@ -123,7 +123,7 @@ public actor WebDAVClient: WebDAVClientProtocol {
         let request = makeRequest(method: "MKCOL", path: path)
         let (_, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw WebDAVError.invalidResponse }
-        guard http.statusCode == 201 || http.statusCode == 405 else {
+        guard http.statusCode == 201 || http.statusCode == 405 || http.statusCode == 409 else {
             throw WebDAVError.httpError(http.statusCode)
         }
     }

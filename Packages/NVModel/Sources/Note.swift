@@ -15,6 +15,7 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
     public var lastSyncedAt: Date?
     public var localDirty: Bool
     public var deletedLocally: Bool
+    public var archived: Bool
 
     public init(
         id: UUID = UUID(),
@@ -30,7 +31,8 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
         remotePath: String? = nil,
         lastSyncedAt: Date? = nil,
         localDirty: Bool = true,
-        deletedLocally: Bool = false
+        deletedLocally: Bool = false,
+        archived: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -46,14 +48,14 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
         self.lastSyncedAt = lastSyncedAt
         self.localDirty = localDirty
         self.deletedLocally = deletedLocally
+        self.archived = archived
     }
 
     enum CodingKeys: String, CodingKey {
         case id, title, body, bodyAttributes, labels
         case createdAt, modifiedAt
-        case lastSelectedLocation, lastSelectedLength
-        case isEncrypted
-        case etag, remotePath, lastSyncedAt, localDirty, deletedLocally
+        case lastSelectedLocation, lastSelectedLength, isEncrypted
+        case etag, remotePath, lastSyncedAt, localDirty, deletedLocally, archived
     }
 
     public init(from decoder: Decoder) throws {
@@ -78,6 +80,7 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
         lastSyncedAt = try container.decodeIfPresent(Date.self, forKey: .lastSyncedAt)
         localDirty = try container.decode(Bool.self, forKey: .localDirty)
         deletedLocally = try container.decode(Bool.self, forKey: .deletedLocally)
+        archived = try container.decodeIfPresent(Bool.self, forKey: .archived) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -97,5 +100,6 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
         try container.encodeIfPresent(lastSyncedAt, forKey: .lastSyncedAt)
         try container.encode(localDirty, forKey: .localDirty)
         try container.encode(deletedLocally, forKey: .deletedLocally)
+        try container.encode(archived, forKey: .archived)
     }
 }

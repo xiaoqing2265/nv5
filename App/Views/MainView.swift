@@ -3,18 +3,24 @@ import NVModel
 import NVStore
 import NVKit
 
+enum SidebarItem: Hashable {
+    case all
+    case archived
+    case label(String)
+}
+
 struct MainView: View {
     @Environment(AppCoordinator.self) private var coordinator
     @State private var visibility: NavigationSplitViewVisibility = .doubleColumn
-    @State private var selectedLabel: String? = nil
+    @State private var selectedItem: SidebarItem = .all
     @AppStorage("isWindowPinned") private var isWindowPinned: Bool = false
 
     var body: some View {
         NavigationSplitView(columnVisibility: $visibility) {
-            LabelSidebar(selectedLabel: $selectedLabel)
+            LabelSidebar(selectedItem: $selectedItem)
                 .navigationSplitViewColumnWidth(min: 140, ideal: 180, max: 240)
         } content: {
-            NoteListColumn(selectedLabel: selectedLabel)
+            NoteListColumn(selectedItem: selectedItem)
                 .navigationSplitViewColumnWidth(min: 240, ideal: 300)
         } detail: {
             EditorColumn()
@@ -43,6 +49,18 @@ struct MainView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                coordinator.multiSelectionMode.toggle()
+                if !coordinator.multiSelectionMode {
+                    coordinator.selectedNoteIDs.removeAll()
+                }
+            } label: {
+                Label("批量选择", systemImage: coordinator.multiSelectionMode ? "checkmark.circle.fill" : "checkmark.circle")
+            }
+            .foregroundStyle(coordinator.multiSelectionMode ? Color.accentColor : .secondary)
+            .help("批量选择笔记")
+        }
         ToolbarItem(placement: .primaryAction) {
             Button {
                 Task { _ = await coordinator.newNote() }

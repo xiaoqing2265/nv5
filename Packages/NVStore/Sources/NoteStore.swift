@@ -9,7 +9,7 @@ public final class NoteStore {
     public private(set) var notes: [Note] = []
     public private(set) var observationError: Error?
 
-    private let database: Database
+    public let database: Database
     private nonisolated(unsafe) var observationTask: Task<Void, Never>?
 
     public init(database: Database) {
@@ -27,6 +27,7 @@ public final class NoteStore {
             let observation = ValueObservation.tracking { db in
                 try Note
                     .filter(Note.Columns.deletedLocally == false)
+                    .filter(Note.Columns.archived == false)
                     .order(Note.Columns.modifiedAt.desc)
                     .fetchAll(db)
             }
@@ -60,8 +61,9 @@ public final class NoteStore {
         let noteLastSyncedAt = note.lastSyncedAt
         let noteLastSelectedRange = note.lastSelectedRange
         let noteIsEncrypted = note.isEncrypted
+        let noteArchived = note.archived
 
-        try await database.writer.write { [noteID, noteTitle, noteBody, noteBodyAttributes, noteLabels, noteCreatedAt, noteDeletedLocally, noteEtag, noteRemotePath, noteLastSyncedAt, noteLastSelectedRange, noteIsEncrypted, now] db in
+        try await database.writer.write { [noteID, noteTitle, noteBody, noteBodyAttributes, noteLabels, noteCreatedAt, noteDeletedLocally, noteEtag, noteRemotePath, noteLastSyncedAt, noteLastSelectedRange, noteIsEncrypted, noteArchived, now] db in
             var toSave = Note(
                 id: noteID,
                 title: noteTitle,
@@ -76,9 +78,30 @@ public final class NoteStore {
                 remotePath: noteRemotePath,
                 lastSyncedAt: noteLastSyncedAt,
                 localDirty: true,
-                deletedLocally: noteDeletedLocally
+                deletedLocally: noteDeletedLocally,
+                archived: noteArchived
             )
             try toSave.save(db)
+        }
+    }
+
+    public func setArchived(id: UUID, archived: Bool) async throws {
+        try await database.writer.write { db in
+            guard var note = try Note.fetchOne(db, key: id.uuidString) else { return }
+            note.archived = archived
+            note.modifiedAt = Date()
+            note.localDirty = true
+            try note.update(db)
+        }
+    }
+
+    public func archivedNotes() async throws -> [Note] {
+        return try await database.writer.read { db in
+            try Note
+                .filter(Note.Columns.archived == true)
+                .filter(Note.Columns.deletedLocally == false)
+                .order(Note.Columns.modifiedAt.desc)
+                .fetchAll(db)
         }
     }
 
@@ -123,13 +146,23 @@ public final class NoteStore {
         }
     }
 
-    public func search(query: String) -> [Note] {
+    public func search(query: String, includeArchived: Bool = false) -> [Note] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return notes }
+        
+        let targetNotes: [Note]
+        if includeArchived {
+            targetNotes = (try? database.writer.read { db in
+                try Note.filter(Note.Columns.deletedLocally == false).fetchAll(db)
+            }) ?? notes
+        } else {
+            targetNotes = notes
+        }
+        
+        guard !trimmed.isEmpty else { return targetNotes }
 
         let tokens = trimmed.split(separator: " ").map(String.init)
 
-        let matched = notes.filter { note in
+        let matched = targetNotes.filter { note in
             tokens.allSatisfy { token in
                 note.title.range(of: token, options: .caseInsensitive) != nil
                 || note.body.range(of: token, options: .caseInsensitive) != nil

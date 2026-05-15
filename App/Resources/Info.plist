@@ -26,6 +26,35 @@
     <string>Copyright 2026. All rights reserved.</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.nv5.urlscheme</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>nv5</string>
+            </array>
+        </dict>
+    </array>
+    <key>NSServices</key>
+    <array>
+        <dict>
+            <key>NSMessage</key>
+            <string>sendToNV5</string>
+            <key>NSPortName</key>
+            <string>NV5</string>
+            <key>NSMenuItem</key>
+            <dict>
+                <key>default</key>
+                <string>Send to NV5</string>
+            </dict>
+            <key>NSSendTypes</key>
+            <array>
+                <string>NSStringPboardType</string>
+            </array>
+        </dict>
+    </array>
     <key>SUFeedURL</key>
     <string>https://example.com/nv5/appcast.xml</string>
     <key>SUEnableInstallerLauncherService</key>

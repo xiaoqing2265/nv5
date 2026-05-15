@@ -1,6 +1,7 @@
 import SwiftUI
 import KeyboardShortcuts
 import NVSync
+import NVExport
 
 struct SettingsView: View {
     var body: some View {
@@ -9,6 +10,8 @@ struct SettingsView: View {
                 .tabItem { Label("通用", systemImage: "gear") }
             WebDAVSettingsView()
                 .tabItem { Label("同步", systemImage: "icloud") }
+            ExportSettings()
+                .tabItem { Label("导出", systemImage: "square.and.arrow.up") }
             ShortcutsSettings()
                 .tabItem { Label("快捷键", systemImage: "keyboard") }
         }
@@ -38,6 +41,45 @@ struct GeneralSettings: View {
                     value: $syncInterval, in: 1...60, step: 1)
         }
         .padding()
+    }
+}
+
+struct ExportSettings: View {
+    @State private var exportDirectoryURL: URL? = ExportPreferences.exportDirectory
+    @AppStorage("defaultExportFormat") private var defaultFormat: String = ExportFormat.markdown.rawValue
+
+    var body: some View {
+        Form {
+            Section("导出目录") {
+                HStack {
+                    Text(exportDirectoryURL?.path ?? "未配置")
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("选择...") { chooseDirectory() }
+                }
+            }
+            Section("默认格式") {
+                Picker("⌘⇧E 使用", selection: $defaultFormat) {
+                    ForEach(ExportFormat.allCases, id: \.rawValue) { f in
+                        Text(f.displayName).tag(f.rawValue)
+                    }
+                }
+            }
+        }
+        .padding()
+    }
+
+    private func chooseDirectory() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url {
+            try? ExportPreferences.setExportDirectory(url)
+            exportDirectoryURL = url
+        }
     }
 }
 
@@ -130,7 +172,6 @@ struct WebDAVSettingsView: View {
         defer { isTesting = false }
         let client = WebDAVClient(config: config, password: password)
         do {
-            try await client.ensureBasePath()
             _ = try await client.listDirectory(path: "")
             testResult = "✓ 连接成功"
         } catch {

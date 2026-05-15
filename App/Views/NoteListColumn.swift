@@ -2,19 +2,45 @@ import SwiftUI
 import NVModel
 import NVStore
 import NVKit
+import GRDB
 
 struct NoteListColumn: View {
     @Environment(AppCoordinator.self) private var coordinator
     @Environment(NoteStore.self) private var store
-    let selectedLabel: String?
+    let selectedItem: SidebarItem
     @FocusState private var searchFieldFocused: Bool
 
     private var filteredNotes: [Note] {
+        if selectedItem == .archived {
+            let archivedNotes = (try? store.database.writer.read { db in
+                try Note.filter(Note.Columns.archived == true)
+                    .filter(Note.Columns.deletedLocally == false)
+                    .order(Note.Columns.modifiedAt.desc)
+                    .fetchAll(db)
+            }) ?? []
+            
+            if coordinator.query.isEmpty {
+                return archivedNotes
+            } else {
+                let tokens = coordinator.query.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: " ").map(String.init)
+                return archivedNotes.filter { note in
+                    tokens.allSatisfy { token in
+                        note.title.range(of: token, options: .caseInsensitive) != nil
+                        || note.body.range(of: token, options: .caseInsensitive) != nil
+                        || note.labels.contains { $0.range(of: token, options: .caseInsensitive) != nil }
+                    }
+                }
+            }
+        }
+        
         let base: [Note] = coordinator.query.isEmpty
             ? store.notes
-            : store.search(query: coordinator.query)
-        guard let label = selectedLabel else { return base }
-        return base.filter { $0.labels.contains(label) }
+            : store.search(query: coordinator.query, includeArchived: false)
+        
+        switch selectedItem {
+        case .all, .archived: return base
+        case .label(let label): return base.filter { $0.labels.contains(label) }
+        }
     }
 
     var body: some View {
@@ -43,28 +69,45 @@ struct NoteListColumn: View {
             Divider()
 
             ScrollViewReader { proxy in
-                List(selection: Binding(
-                    get: { coordinator.selectedNoteID },
-                    set: { coordinator.selectedNoteID = $0 }
-                )) {
-                    ForEach(filteredNotes) { note in
-                        NoteRow(note: note)
-                            .tag(Optional(note.id))
-                            .contextMenu {
-                                Button("Delete", systemImage: "trash", role: .destructive) {
-                                    delete(note)
-                                }
+                Group {
+                    if coordinator.multiSelectionMode {
+                        List(selection: Binding(
+                            get: { coordinator.selectedNoteIDs },
+                            set: { coordinator.selectedNoteIDs = $0 }
+                        )) {
+                            ForEach(filteredNotes) { note in
+                                NoteRow(note: note)
+                                    .tag(note.id)
                             }
+                        }
+                    } else {
+                        List(selection: Binding(
+                            get: { coordinator.selectedNoteID },
+                            set: { coordinator.selectedNoteID = $0 }
+                        )) {
+                            ForEach(filteredNotes) { note in
+                                NoteRow(note: note)
+                                    .tag(Optional(note.id))
+                                    .contextMenu {
+                                        Button(note.archived ? "取消归档" : "归档", systemImage: note.archived ? "tray.and.arrow.up" : "archivebox") {
+                                            coordinator.setArchived(id: note.id, archived: !note.archived)
+                                        }
+                                        Button("删除", systemImage: "trash", role: .destructive) {
+                                            delete(note)
+                                        }
+                                    }
+                            }
+                        }
+                        .onDeleteCommand {
+                            let notes = filteredNotes
+                            if let id = coordinator.selectedNoteID,
+                               let note = notes.first(where: { $0.id == id }) {
+                                delete(note)
+                            }
+                        }
                     }
                 }
                 .listStyle(.inset)
-                .onDeleteCommand {
-                    let notes = filteredNotes
-                    if let id = coordinator.selectedNoteID,
-                       let note = notes.first(where: { $0.id == id }) {
-                        delete(note)
-                    }
-                }
                 .onChange(of: filteredNotes) { _, newNotes in
                     // If a note was just created, wait for it to appear in the list
                     if let createdID = coordinator.recentlyCreatedNoteID {
@@ -97,6 +140,26 @@ struct NoteListColumn: View {
                         coordinator.selectedNoteID = newNotes.first?.id
                     }
                 }
+            }
+
+            if coordinator.multiSelectionMode {
+                Divider()
+                HStack {
+                    Text("已选择 \(coordinator.selectedNoteIDs.count) 项")
+                        .font(.caption)
+                    Spacer()
+                    Button("取消") {
+                        coordinator.multiSelectionMode = false
+                        coordinator.selectedNoteIDs.removeAll()
+                    }
+                    Button("导出") {
+                        coordinator.exportCurrentNote()
+                    }
+                    .disabled(coordinator.selectedNoteIDs.isEmpty)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color(NSColor.controlBackgroundColor))
             }
         }
         .onChange(of: coordinator.focusTarget) { _, new in

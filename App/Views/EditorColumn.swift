@@ -10,7 +10,13 @@ struct EditorColumn: View {
 
     var body: some View {
         Group {
-            if let id = coordinator.selectedNoteID,
+            if coordinator.multiSelectionMode {
+                EmptyStateView(
+                    title: "已选择 \(coordinator.selectedNoteIDs.count) 项",
+                    systemImage: "checkmark.circle",
+                    description: "可以在左侧列表执行批量操作。"
+                )
+            } else if let id = coordinator.selectedNoteID,
                let note = store.notes.first(where: { $0.id == id }) {
                 editorView(for: note)
                     .onChange(of: coordinator.focusTarget) { _, new in
@@ -69,13 +75,28 @@ struct TitleBar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            TextField("Title", text: $title)
-                .textFieldStyle(.plain)
-                .font(NVTheme.Fonts.editorTitle)
-                .onSubmit { commitTitle() }
-                .onChange(of: title) { _, _ in
-                    debouncedCommit()
+            HStack {
+                TextField("Title", text: $title)
+                    .textFieldStyle(.plain)
+                    .font(NVTheme.Fonts.editorTitle)
+                    .onSubmit { commitTitle() }
+                    .onChange(of: title) { _, _ in
+                        debouncedCommit()
+                    }
+                
+                Spacer()
+                
+                Button {
+                    if let view = NSApp.keyWindow?.contentView {
+                        coordinator.shareCurrentNote(from: view)
+                    }
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
                 }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("分享笔记")
+            }
 
             HStack(spacing: 6) {
                 ForEach(Array(note.labels), id: \.self) { label in

@@ -4,6 +4,7 @@ import NVStore
 import NVSync
 import NVModel
 import NVCrypto
+import NVExport
 
 extension KeyboardShortcuts.Name {
     static let activateNV5 = Self("activateNV5", default: .init(.space, modifiers: [.command, .control]))
@@ -20,14 +21,29 @@ struct NV5App: App {
                 .environment(coordinator.store)
                 .frame(minWidth: 800, minHeight: 500)
                 .onAppear { coordinator.bootstrap() }
+                .onOpenURL { url in
+                    let handler = URLSchemeHandler(coordinator: coordinator)
+                    handler.handle(url)
+                }
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
-        CommandGroup(replacing: .newItem) {
-            Button("新建笔记") { Task { _ = await coordinator.newNote() } }
-                .keyboardShortcut("n", modifiers: .command)
-        }
+            CommandGroup(replacing: .newItem) {
+                Button("新建笔记") { Task { _ = await coordinator.newNote() } }
+                    .keyboardShortcut("n", modifiers: .command)
+            }
+            CommandMenu("导出") {
+                Button("复制为 Markdown") { coordinator.copyAsMarkdown() }
+                    .keyboardShortcut("c", modifiers: [.command, .shift])
+                Button("复制为富文本") { coordinator.copyAsRichText() }
+                Button("复制为纯文本") { coordinator.copyAsPlainText() }
+                Divider()
+                Button("导出到文件") { coordinator.exportCurrentNote() }
+                    .keyboardShortcut("e", modifiers: [.command, .shift])
+                Button("导出选项...") { coordinator.showExportPanel() }
+                    .keyboardShortcut("e", modifiers: [.command, .option, .shift])
+            }
         }
 
         Settings {
@@ -37,6 +53,7 @@ struct NV5App: App {
     }
 }
 
+@MainActor
 @Observable
 final class AppCoordinator {
     enum FocusTarget: Hashable {
@@ -51,6 +68,8 @@ final class AppCoordinator {
     var sync: SyncCoordinator?
     var query: String = ""
     var selectedNoteID: UUID?
+    var selectedNoteIDs: Set<UUID> = []
+    var multiSelectionMode: Bool = false
     var focusTarget: FocusTarget = .none
     /// Set after newNote() to prevent onChange(filteredNotes) from overriding selection
     /// before ValueObservation has propagated the new note to store.notes
@@ -58,32 +77,15 @@ final class AppCoordinator {
     private var isCreatingNote = false
     private var isBootstrapped = false
 
-    @MainActor
+    private var exportService: ExportService
+    private var servicesProvider: ServicesProvider?
+
     init() {
-        do {
-            let appSupport = try FileManager.default.url(
-                for: .applicationSupportDirectory, in: .userDomainMask,
-                appropriateFor: nil, create: true
-            ).appendingPathComponent("NV5", isDirectory: true)
-            try FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
-            let dbURL = appSupport.appendingPathComponent("notes.sqlite")
-            let db = try Database(url: dbURL)
-            self.database = db
-            self.store = NoteStore(database: db)
-        } catch {
-            let alert = NSAlert()
-            alert.alertStyle = .critical
-            alert.messageText = "NV5 无法启动"
-            alert.informativeText = "数据库初始化失败，请检查磁盘空间或权限后重试。\n\n错误详情：\(error.localizedDescription)"
-            alert.addButton(withTitle: "退出")
-            alert.runModal()
-            NSApp.terminate(nil)
-            // 满足编译器要求：此路径实际不会执行
-            fatalError("Unreachable after NSApp.terminate")
-        }
+        self.exportService = ExportService()
+        self.database = AppEnvironment.shared.database
+        self.store = AppEnvironment.shared.store
     }
 
-    @MainActor
     func bootstrap() {
         guard !isBootstrapped else { return }
         isBootstrapped = true
@@ -92,9 +94,13 @@ final class AppCoordinator {
 
         configureWebDAVIfAvailable()
         registerHotKey()
+
+        let sp = ServicesProvider(coordinator: self)
+        self.servicesProvider = sp
+        NSApp.servicesProvider = sp
+        NSUpdateDynamicServices()
     }
 
-    @MainActor
     private func configureWebDAVIfAvailable() {
         guard let credentials = WebDAVSettings.load() else {
             return
@@ -120,7 +126,6 @@ final class AppCoordinator {
         }
     }
 
-    @MainActor
     func newNote() async -> UUID? {
         guard !isCreatingNote else {
             return nil
@@ -144,7 +149,20 @@ final class AppCoordinator {
         return note.id
     }
 
-    @MainActor
+    func newNoteFromURL(title: String, body: String) async {
+        let titleToUse = title.isEmpty ? "无标题" : title
+        let note = Note(title: titleToUse, body: body)
+        do {
+            try await store.upsert(note)
+            self.recentlyCreatedNoteID = note.id
+            self.selectedNoteID = note.id
+            self.focusTarget = .editor
+            self.query = ""
+        } catch {
+            showError(error)
+        }
+    }
+
     func triggerSync() {
         Task {
             do {
@@ -156,9 +174,125 @@ final class AppCoordinator {
         }
     }
 
-    @MainActor
     func reconfigureSync() {
         sync = nil
         configureWebDAVIfAvailable()
+    }
+
+    // MARK: - Lifecycle
+
+    func setArchived(id: UUID, archived: Bool) {
+        Task {
+            do {
+                try await store.setArchived(id: id, archived: archived)
+            } catch {
+                await MainActor.run {
+                    showError(error)
+                }
+            }
+        }
+    }
+
+    // MARK: - Export
+
+    func copyAsMarkdown() { copyToClipboard(as: .markdown) }
+
+    func copyAsRichText() { copyToClipboard(as: .richText) }
+
+    func copyAsPlainText() { copyToClipboard(as: .plainText) }
+
+    private func copyToClipboard(as format: ExportFormat) {
+        guard let id = selectedNoteID, let note = store.notes.first(where: { $0.id == id }) else { return }
+        do {
+            try exportService.copyToClipboard(note, as: format)
+        } catch {
+            showError(error)
+        }
+    }
+
+    func exportCurrentNote() {
+        if multiSelectionMode {
+            exportSelectedNotes()
+            return
+        }
+
+        guard let id = selectedNoteID, let note = store.notes.first(where: { $0.id == id }) else { return }
+        let formatStr = UserDefaults.standard.string(forKey: "defaultExportFormat") ?? ExportFormat.markdown.rawValue
+        let format = ExportFormat(rawValue: formatStr) ?? .markdown
+        guard let dir = ExportPreferences.exportDirectory else {
+            showExportPanel()
+            return
+        }
+
+        // request access to security scoped resource
+        let accessing = dir.startAccessingSecurityScopedResource()
+
+        Task {
+            defer { if accessing { dir.stopAccessingSecurityScopedResource() } }
+            do {
+                _ = try await exportService.exportToFile(note, as: format, in: dir)
+            } catch {
+                await MainActor.run {
+                    showError(error)
+                }
+            }
+        }
+    }
+
+    func exportSelectedNotes() {
+        guard !selectedNoteIDs.isEmpty else { return }
+        let notesToExport = store.notes.filter { selectedNoteIDs.contains($0.id) }
+
+        let formatStr = UserDefaults.standard.string(forKey: "defaultExportFormat") ?? ExportFormat.markdown.rawValue
+        let format = ExportFormat(rawValue: formatStr) ?? .markdown
+        guard let dir = ExportPreferences.exportDirectory else {
+            showExportPanel()
+            return
+        }
+
+        let accessing = dir.startAccessingSecurityScopedResource()
+
+        Task {
+            defer { if accessing { dir.stopAccessingSecurityScopedResource() } }
+            do {
+                _ = try await exportService.exportToDirectory(notesToExport, as: format, in: dir)
+            } catch {
+                await MainActor.run {
+                    showError(error)
+                }
+            }
+        }
+    }
+
+    func shareCurrentNote(from view: NSView) {
+        guard let id = selectedNoteID, let note = store.notes.first(where: { $0.id == id }) else { return }
+        let formatStr = UserDefaults.standard.string(forKey: "defaultExportFormat") ?? ExportFormat.markdown.rawValue
+        let format = ExportFormat(rawValue: formatStr) ?? .markdown
+        do {
+            try exportService.share(note, as: format, from: view)
+        } catch {
+            showError(error)
+        }
+    }
+
+    func showExportPanel() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "选择导出目录"
+        if panel.runModal() == .OK, let url = panel.url {
+            try? ExportPreferences.setExportDirectory(url)
+            exportCurrentNote()
+        }
+    }
+
+    private func showError(_ error: Error) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "导出失败"
+        alert.informativeText = error.localizedDescription
+        alert.addButton(withTitle: "确定")
+        alert.runModal()
     }
 }

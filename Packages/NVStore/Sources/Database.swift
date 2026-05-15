@@ -36,6 +36,7 @@ public final class Database {
                 t.column("lastSyncedAt", .datetime)
                 t.column("localDirty", .boolean).notNull().defaults(to: true)
                 t.column("deletedLocally", .boolean).notNull().defaults(to: false)
+                t.column("archived", .boolean).notNull().defaults(to: false)
             }
 
             try db.create(table: "applied_tombstone") { t in
@@ -67,6 +68,7 @@ extension Note: FetchableRecord, MutablePersistableRecord {
         public static let lastSyncedAt = Column("lastSyncedAt")
         public static let localDirty = Column("localDirty")
         public static let deletedLocally = Column("deletedLocally")
+        public static let archived = Column("archived")
     }
 
     public init(row: Row) throws {
@@ -96,6 +98,7 @@ extension Note: FetchableRecord, MutablePersistableRecord {
         note.lastSyncedAt = row[Columns.lastSyncedAt]
         note.localDirty = row[Columns.localDirty]
         note.deletedLocally = row[Columns.deletedLocally]
+        note.archived = row[Columns.archived]
         self = note
     }
 
@@ -116,6 +119,7 @@ extension Note: FetchableRecord, MutablePersistableRecord {
         container[Columns.lastSyncedAt] = lastSyncedAt
         container[Columns.localDirty] = localDirty
         container[Columns.deletedLocally] = deletedLocally
+        container[Columns.archived] = archived
     }
 }
 

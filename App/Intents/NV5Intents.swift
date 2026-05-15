@@ -138,8 +138,8 @@ struct ExportNotesByLabelIntent: AppIntent {
     func perform() async throws -> some IntentResult & ReturnsValue<[IntentFile]> {
         let allNotes = try await MainActor.run {
             try AppEnvironment.shared.database.writer.read { db in
-                try Note.filter(Column("archived") == false)
-                    .filter(Column("deletedLocally") == false)
+                try Note.filter(Note.Columns.archived == false)
+                    .filter(Note.Columns.deletedLocally == false)
                     .fetchAll(db)
             }
         }

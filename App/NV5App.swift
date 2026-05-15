@@ -37,7 +37,9 @@ struct NV5App: App {
                 Button("复制为 Markdown") { coordinator.copyAsMarkdown() }
                     .keyboardShortcut("c", modifiers: [.command, .shift])
                 Button("复制为富文本") { coordinator.copyAsRichText() }
+                    .keyboardShortcut("r", modifiers: [.command, .shift])
                 Button("复制为纯文本") { coordinator.copyAsPlainText() }
+                    .keyboardShortcut("t", modifiers: [.command, .shift])
                 Divider()
                 Button("导出到文件") { coordinator.exportCurrentNote() }
                     .keyboardShortcut("e", modifiers: [.command, .shift])

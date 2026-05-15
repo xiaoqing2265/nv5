@@ -42,8 +42,6 @@ enum FileDestination {
         guard FileManager.default.fileExists(atPath: candidate.path) else { return candidate }
 
         for i in 2...999 {
-            let url = baseURL.deletingPathExtension()
-                .appendingPathComponent("")  // workaround，保持原 baseURL
             let alt = URL(fileURLWithPath: "\(baseURL.path)-\(i).\(ext)")
             if !FileManager.default.fileExists(atPath: alt.path) {
                 return alt

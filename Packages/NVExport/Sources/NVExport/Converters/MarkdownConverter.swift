@@ -6,24 +6,33 @@ public enum MarkdownConverter {
     public static func convert(_ note: Note) throws -> ExportContent {
         var output = ""
 
-        // 标题作为 # 一级标题
         if !note.title.isEmpty {
             output += "# \(note.title)\n\n"
         }
 
-        // 如果没有富文本属性，直接用纯文本
-        guard let data = note.bodyAttributes,
-              let attributed = try? NSAttributedString(
-                  data: data,
-                  options: [.documentType: NSAttributedString.DocumentType.rtfd],
-                  documentAttributes: nil
-              ) else {
+        guard let data = note.bodyAttributes else {
             output += note.body
             return .text(output)
         }
 
+        let attributed = restoreAttributedString(from: data) ?? NSAttributedString(string: note.body)
         output += renderMarkdown(from: attributed)
         return .text(output)
+    }
+
+    private static func restoreAttributedString(from data: Data) -> NSAttributedString? {
+        if let attr = try? NSAttributedString(
+            data: data,
+            options: [.documentType: NSAttributedString.DocumentType.rtfd],
+            documentAttributes: nil
+        ) {
+            return attr
+        }
+        return try? NSAttributedString(
+            data: data,
+            options: [.documentType: NSAttributedString.DocumentType.rtf],
+            documentAttributes: nil
+        )
     }
 
     private static func renderMarkdown(from attr: NSAttributedString) -> String {

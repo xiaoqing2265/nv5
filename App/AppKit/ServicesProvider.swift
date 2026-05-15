@@ -13,7 +13,9 @@ import NVModel
         guard let text = pasteboard.string(forType: .string) else { return }
         let currentCoordinator = coordinator
         Task { @MainActor in
-            let note = Note(title: text.prefix(40).description, body: text)
+            let firstLine = text.components(separatedBy: .newlines).first ?? text
+            let title = String(firstLine.prefix(40))
+            let note = Note(title: title, body: text)
             try? await currentCoordinator.store.upsert(note)
         }
     }

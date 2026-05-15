@@ -43,8 +43,10 @@ final class FileDestinationTests: XCTestCase {
             in: tempDir
         )
 
-        XCTAssertTrue(url1.path.contains("-2.txt"))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: url1.path.replacingOccurrences(of: "-2.txt", with: ".txt")))
+        XCTAssertFalse(url1.path.contains("-2"))
+        XCTAssertTrue(url2.path.contains("-2.txt"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url1.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url2.path))
     }
 
     func testSanitizeFilename() async throws {

@@ -2,7 +2,6 @@ import SwiftUI
 import NVModel
 import NVStore
 import NVKit
-import GRDB
 
 struct NoteListColumn: View {
     @Environment(AppCoordinator.self) private var coordinator
@@ -12,34 +11,30 @@ struct NoteListColumn: View {
 
     private var filteredNotes: [Note] {
         if selectedItem == .archived {
-            let archivedNotes = (try? store.database.writer.read { db in
-                try Note.filter(Note.Columns.archived == true)
-                    .filter(Note.Columns.deletedLocally == false)
-                    .order(Note.Columns.modifiedAt.desc)
-                    .fetchAll(db)
-            }) ?? []
-            
             if coordinator.query.isEmpty {
-                return archivedNotes
-            } else {
-                let tokens = coordinator.query.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: " ").map(String.init)
-                return archivedNotes.filter { note in
-                    tokens.allSatisfy { token in
-                        note.title.range(of: token, options: .caseInsensitive) != nil
-                        || note.body.range(of: token, options: .caseInsensitive) != nil
-                        || note.labels.contains { $0.range(of: token, options: .caseInsensitive) != nil }
-                    }
-                }
+                return store.archivedNotes
             }
+            return searchNotes(store.archivedNotes, query: coordinator.query)
         }
-        
+
         let base: [Note] = coordinator.query.isEmpty
             ? store.notes
             : store.search(query: coordinator.query, includeArchived: false)
-        
+
         switch selectedItem {
         case .all, .archived: return base
         case .label(let label): return base.filter { $0.labels.contains(label) }
+        }
+    }
+
+    private func searchNotes(_ notes: [Note], query: String) -> [Note] {
+        let tokens = query.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: " ").map(String.init)
+        return notes.filter { note in
+            tokens.allSatisfy { token in
+                note.title.range(of: token, options: .caseInsensitive) != nil
+                || note.body.range(of: token, options: .caseInsensitive) != nil
+                || note.labels.contains { $0.range(of: token, options: .caseInsensitive) != nil }
+            }
         }
     }
 
@@ -92,6 +87,13 @@ struct NoteListColumn: View {
                                         Button(note.archived ? "取消归档" : "归档", systemImage: note.archived ? "tray.and.arrow.up" : "archivebox") {
                                             coordinator.setArchived(id: note.id, archived: !note.archived)
                                         }
+                                        Button("分享...", systemImage: "square.and.arrow.up") {
+                                            if let window = NSApp.keyWindow,
+                                               let contentView = window.contentView {
+                                                coordinator.shareCurrentNote(from: contentView)
+                                            }
+                                        }
+                                        Divider()
                                         Button("删除", systemImage: "trash", role: .destructive) {
                                             delete(note)
                                         }

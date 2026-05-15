@@ -14,12 +14,14 @@ final class URLSchemeHandler {
 
         switch url.host {
         case "new":
-            let title = comp?.queryItems?.first(where: { $0.name == "title" })?.value ?? ""
-            let body = comp?.queryItems?.first(where: { $0.name == "body" })?.value ?? ""
+            let rawTitle = comp?.queryItems?.first(where: { $0.name == "title" })?.value ?? ""
+            let rawBody = comp?.queryItems?.first(where: { $0.name == "body" })?.value ?? ""
+            let title = rawTitle.removingPercentEncoding ?? rawTitle
+            let body = rawBody.removingPercentEncoding ?? rawBody
             Task { await coordinator.newNoteFromURL(title: title, body: body) }
         case "search":
-            let q = comp?.queryItems?.first(where: { $0.name == "q" })?.value ?? ""
-            coordinator.query = q
+            let rawQ = comp?.queryItems?.first(where: { $0.name == "q" })?.value ?? ""
+            coordinator.query = rawQ.removingPercentEncoding ?? rawQ
             coordinator.focusTarget = .searchField
         case "open":
             if let idStr = comp?.queryItems?.first(where: { $0.name == "id" })?.value,

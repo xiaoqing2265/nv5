@@ -7,18 +7,22 @@ import Observation
 @MainActor
 public final class NoteStore {
     public private(set) var notes: [Note] = []
+    public private(set) var archivedNotes: [Note] = []
     public private(set) var observationError: Error?
 
-    public let database: Database
+    private let database: Database
     private nonisolated(unsafe) var observationTask: Task<Void, Never>?
+    private nonisolated(unsafe) var archivedObservationTask: Task<Void, Never>?
 
     public init(database: Database) {
         self.database = database
         startObserving()
+        startArchivedObserving()
     }
 
     deinit {
         observationTask?.cancel()
+        archivedObservationTask?.cancel()
     }
 
     private func startObserving() {
@@ -43,6 +47,29 @@ public final class NoteStore {
                 await MainActor.run {
                     self?.observationError = error
                 }
+            }
+        }
+    }
+
+    private func startArchivedObserving() {
+        let writer = database.writer
+        archivedObservationTask = Task { [weak self] in
+            let observation = ValueObservation.tracking { db in
+                try Note
+                    .filter(Note.Columns.deletedLocally == false)
+                    .filter(Note.Columns.archived == true)
+                    .order(Note.Columns.modifiedAt.desc)
+                    .fetchAll(db)
+            }
+
+            do {
+                for try await archived in observation.values(in: writer) {
+                    await MainActor.run {
+                        self?.archivedNotes = archived
+                    }
+                }
+            } catch {
+                // archived observation errors are non-critical, silently ignore
             }
         }
     }

@@ -91,9 +91,11 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add appcast.xml
+          git stash
           git fetch origin main
           git checkout main
-          git add appcast.xml
+          git stash pop
           git commit -m "chore: update appcast for ${{ github.ref_name }}" || echo "No changes"
           git push origin main
 

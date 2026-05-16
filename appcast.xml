@@ -1,9 +1,14 @@
-<?xml version="1.0" encoding="utf-8"?>
-<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
     <channel>
         <title>NV5</title>
-        <link>https://raw.githubusercontent.com/xiaoqing2265/nv5/main/appcast.xml</link>
-        <description>Most recent changes with links to updates.</description>
-        <language>en</language>
+        <item>
+            <title>1.0</title>
+            <pubDate>Sat, 16 May 2026 16:28:40 +0000</pubDate>
+            <sparkle:version>1</sparkle:version>
+            <sparkle:shortVersionString>1.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/xiaoqing2265/nv5/releases/download/v0.9.0-alpha1/NV5-v0.9.0-alpha1.dmg" length="8591366" type="application/octet-stream" sparkle:edSignature="mDP1r1uVQBruKJskCw21oXrai5Lw1OEghraHaEuclLQWplUYFsUgvSqkV9Hg5Ac4YilU8Gp5m1OUuRDQMWOpCA=="/>
+        </item>
     </channel>
 </rss>

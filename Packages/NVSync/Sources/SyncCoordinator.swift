@@ -68,11 +68,11 @@ public final class SyncCoordinator {
     private let database: Database
     private let crypto: CryptoEngine?
 
-    private nonisolated(unsafe) var pollTask: Task<Void, Never>?
-    private nonisolated(unsafe) var settingsObserverTask: Task<Void, Never>?
-    private nonisolated(unsafe) var inflightSync: Task<Void, Error>?
-    private nonisolated(unsafe) let syncLock = NSLock()
-    private nonisolated(unsafe) var consecutiveFailures: Int = 0
+    private var pollTask: Task<Void, Never>?
+    private var settingsObserverTask: Task<Void, Never>?
+    private var inflightSync: Task<Void, Error>?
+    private let syncLock = NSLock()
+    private var consecutiveFailures: Int = 0
 
     public init(client: any WebDAVClientProtocol, store: NoteStore, database: Database, crypto: CryptoEngine? = nil) {
         self.client = client
@@ -81,12 +81,6 @@ public final class SyncCoordinator {
         self.crypto = crypto
         startPeriodicSync()
         observeSettingsChanges()
-    }
-
-    deinit {
-        pollTask?.cancel()
-        settingsObserverTask?.cancel()
-        inflightSync?.cancel()
     }
 
     private nonisolated func currentInterval() -> TimeInterval {
@@ -125,12 +119,12 @@ public final class SyncCoordinator {
 
     private func observeSettingsChanges() {
         settingsObserverTask?.cancel()
-        settingsObserverTask = Task { [weak self] in
+        settingsObserverTask = Task { @MainActor [weak self] in
             let stream = NotificationCenter.default.notifications(named: UserDefaults.didChangeNotification)
             for await _ in stream {
                 guard !Task.isCancelled else { break }
                 if let s = self {
-                    await s.startPeriodicSync()
+                    s.startPeriodicSync()
                 }
             }
         }
@@ -362,7 +356,7 @@ public final class SyncCoordinator {
             remoteApplied.localDirty = false
 
             try await database.writer.write { [remoteApplied, conflicted] db in
-                var r = remoteApplied
+                let r = remoteApplied
                 try r.update(db)
                 var c = conflicted
                 try c.insert(db)
@@ -440,7 +434,7 @@ public final class SyncCoordinator {
                 isEncrypted: true
             )
         }
-        guard let crypto = crypto else {
+        guard crypto != nil else {
             throw SyncError.encryptionRequired(noteID: payload.id)
         }
         return payload

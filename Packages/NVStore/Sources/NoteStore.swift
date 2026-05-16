@@ -11,18 +11,13 @@ public final class NoteStore {
     public private(set) var observationError: Error?
 
     private let database: Database
-    private nonisolated(unsafe) var observationTask: Task<Void, Never>?
-    private nonisolated(unsafe) var archivedObservationTask: Task<Void, Never>?
+    private var observationTask: Task<Void, Never>?
+    private var archivedObservationTask: Task<Void, Never>?
 
     public init(database: Database) {
         self.database = database
         startObserving()
         startArchivedObserving()
-    }
-
-    deinit {
-        observationTask?.cancel()
-        archivedObservationTask?.cancel()
     }
 
     private func startObserving() {
@@ -165,7 +160,7 @@ public final class NoteStore {
     }
 
     public func purgeDeletedAndSynced() async throws {
-        try await database.writer.write { db in
+        _ = try await database.writer.write { db in
             try Note
                 .filter(Note.Columns.deletedLocally == true)
                 .filter(Note.Columns.localDirty == false)

@@ -44,6 +44,7 @@ public struct KeyboardCapturingTextField: NSViewRepresentable {
 
     public func makeCoordinator() -> Coordinator { Coordinator(self) }
 
+    @MainActor
     public final class Coordinator: NSObject, NSTextFieldDelegate {
         let parent: KeyboardCapturingTextField
         init(_ parent: KeyboardCapturingTextField) { self.parent = parent }

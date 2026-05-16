@@ -1,7 +1,9 @@
 import AppIntents
 import NVModel
 import NVStore
+import NVExport
 import Foundation
+import GRDB
 
 struct NoteEntity: AppEntity {
     nonisolated(unsafe) static var typeDisplayRepresentation: TypeDisplayRepresentation = "笔记"
@@ -46,10 +48,21 @@ struct NoteEntityQuery: EntityStringQuery {
     }
     
     func entities(matching string: String) async throws -> [NoteEntity] {
+        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
         return try await MainActor.run {
-            let store = AppEnvironment.shared.store
-            let notes = store.search(query: string)
-            return notes.map { NoteEntity(from: $0) }
+            let db = AppEnvironment.shared.database
+            return try db.writer.read { db in
+                try Note
+                    .filter(Note.Columns.deletedLocally == false)
+                    .filter(Note.Columns.archived == false)
+                    .fetchAll(db)
+                    .filter { note in
+                        note.title.localizedCaseInsensitiveContains(trimmed)
+                        || note.body.localizedCaseInsensitiveContains(trimmed)
+                        || note.labels.contains { $0.localizedCaseInsensitiveContains(trimmed) }
+                    }
+                    .map { NoteEntity(from: $0) }
+            }
         }
     }
 }

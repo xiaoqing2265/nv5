@@ -3,19 +3,8 @@ import NVModel
 
 public enum RichTextConverter {
     public static func convert(_ note: Note) throws -> ExportContent {
-        let attributed: NSAttributedString
-        if let data = note.bodyAttributes,
-           let restored = try? NSAttributedString(
-               data: data,
-               options: [.documentType: NSAttributedString.DocumentType.rtfd],
-               documentAttributes: nil
-           ) {
-            attributed = restored
-        } else {
-            attributed = NSAttributedString(string: note.body)
-        }
+        let attributed = restoreAttributedString(from: note.bodyAttributes) ?? NSAttributedString(string: note.body)
 
-        // 标题作为第一行加粗
         let result = NSMutableAttributedString()
         if !note.title.isEmpty {
             let titleAttr = NSAttributedString(
@@ -36,5 +25,21 @@ public enum RichTextConverter {
         } catch {
             throw ExportError.conversionFailed(format: .richText, underlying: error)
         }
+    }
+
+    private static func restoreAttributedString(from data: Data?) -> NSAttributedString? {
+        guard let data else { return nil }
+        if let attr = try? NSAttributedString(
+            data: data,
+            options: [.documentType: NSAttributedString.DocumentType.rtfd],
+            documentAttributes: nil
+        ) {
+            return attr
+        }
+        return try? NSAttributedString(
+            data: data,
+            options: [.documentType: NSAttributedString.DocumentType.rtf],
+            documentAttributes: nil
+        )
     }
 }

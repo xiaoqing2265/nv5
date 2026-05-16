@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 
 struct NVSearchBar: NSViewRepresentable {
     @Binding var text: String
@@ -8,12 +9,18 @@ struct NVSearchBar: NSViewRepresentable {
     var onArrowDown: () -> Void
     var onArrowUp: () -> Void
     var onEscape: () -> Void
+    var focusCoordinator: FocusCoordinator
 
     func makeNSView(context: Context) -> NSSearchField {
         let field = NSSearchField()
         field.placeholderString = "搜索或新建..."
         field.delegate = context.coordinator
         field.focusRingType = .none
+        context.coordinator.selectAllCancellable = focusCoordinator.selectAllSubject
+            .sink { _ in
+                guard let editor = field.currentEditor() else { return }
+                editor.selectAll(nil)
+            }
         return field
     }
 
@@ -43,6 +50,7 @@ struct NVSearchBar: NSViewRepresentable {
     final class Coordinator: NSObject, NSSearchFieldDelegate {
         var parent: NVSearchBar
         var lastIsFocused = false
+        var selectAllCancellable: AnyCancellable?
         init(_ parent: NVSearchBar) { self.parent = parent }
 
         func controlTextDidChange(_ obj: Notification) {

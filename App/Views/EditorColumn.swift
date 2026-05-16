@@ -6,6 +6,7 @@ import NVKit
 struct EditorColumn: View {
     @Environment(AppCoordinator.self) private var coordinator
     @Environment(NoteStore.self) private var store
+    @Environment(FocusCoordinator.self) private var focusCoordinator
     @FocusState private var editorFocused: Bool
 
     var body: some View {
@@ -19,14 +20,15 @@ struct EditorColumn: View {
             } else if let id = coordinator.selectedNoteID,
                let note = store.notes.first(where: { $0.id == id }) {
                 editorView(for: note)
-                    .onChange(of: coordinator.focusTarget) { _, new in
+                    .onChange(of: focusCoordinator.current) { _, new in
                         editorFocused = (new == .editor)
                     }
                     .onChange(of: editorFocused) { _, new in
-                        if new && coordinator.focusTarget != .editor {
-                            coordinator.focusTarget = .editor
+                        if new && focusCoordinator.current != .editor {
+                            focusCoordinator.focus(.editor)
                         }
                     }
+                    .focusRing(capturesTab: false)
             } else {
                 EmptyStateView(
                     title: "选择或创建笔记",
@@ -47,8 +49,8 @@ struct EditorColumn: View {
                 initialAttributes: note.bodyAttributes,
                 initialSelection: note.lastSelectedRange,
                 highlightQuery: coordinator.query,
-                focusRequest: coordinator.focusTarget == .editor,
-                onEscape: { coordinator.focusTarget = .searchField },
+                focusRequest: focusCoordinator.current == .editor,
+                onEscape: { focusCoordinator.escapeToSearch() },
                 onCommit: { id, body, attrs, range in
                     Task {
                         do {
@@ -59,7 +61,8 @@ struct EditorColumn: View {
                             print("[NV5] Failed to save note body (id=\(id)): \(error)")
                         }
                     }
-                }
+                },
+                returnInListPublisher: focusCoordinator.returnInListSubject.eraseToAnyPublisher()
             )
             .focused($editorFocused)
         }
@@ -72,6 +75,7 @@ struct TitleBar: View {
     let note: Note
     @State private var title: String = ""
     @State private var labelInput: String = ""
+    @FocusState private var titleFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -79,13 +83,14 @@ struct TitleBar: View {
                 TextField("Title", text: $title)
                     .textFieldStyle(.plain)
                     .font(NVTheme.Fonts.editorTitle)
+                    .focused($titleFocused)
                     .onSubmit { commitTitle() }
                     .onChange(of: title) { _, _ in
                         debouncedCommit()
                     }
-                
+
                 Spacer()
-                
+
                 Button {
                     if let view = NSApp.keyWindow?.contentView {
                         coordinator.shareCurrentNote(from: view)

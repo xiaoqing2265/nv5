@@ -12,19 +12,10 @@ struct SettingsView: View {
                 .tabItem { Label("同步", systemImage: "icloud") }
             ExportSettings()
                 .tabItem { Label("导出", systemImage: "square.and.arrow.up") }
-            ShortcutsSettings()
+            ShortcutsSettingsView()
                 .tabItem { Label("快捷键", systemImage: "keyboard") }
         }
-        .frame(width: 480, height: 360)
-    }
-}
-
-struct ShortcutsSettings: View {
-    var body: some View {
-        Form {
-            KeyboardShortcuts.Recorder("激活 NV5", name: .activateNV5)
-        }
-        .padding()
+        .frame(width: 600, height: 520)
     }
 }
 

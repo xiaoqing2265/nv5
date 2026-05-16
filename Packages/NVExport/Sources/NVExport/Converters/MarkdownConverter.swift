@@ -15,24 +15,9 @@ public enum MarkdownConverter {
             return .text(output)
         }
 
-        let attributed = restoreAttributedString(from: data) ?? NSAttributedString(string: note.body)
+        let attributed = NSAttributedString.restore(from: data) ?? NSAttributedString(string: note.body)
         output += renderMarkdown(from: attributed)
         return .text(output)
-    }
-
-    private static func restoreAttributedString(from data: Data) -> NSAttributedString? {
-        if let attr = try? NSAttributedString(
-            data: data,
-            options: [.documentType: NSAttributedString.DocumentType.rtfd],
-            documentAttributes: nil
-        ) {
-            return attr
-        }
-        return try? NSAttributedString(
-            data: data,
-            options: [.documentType: NSAttributedString.DocumentType.rtf],
-            documentAttributes: nil
-        )
     }
 
     private static func renderMarkdown(from attr: NSAttributedString) -> String {

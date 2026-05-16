@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import NVModel
+import Combine
 
 struct NoteEditor: NSViewRepresentable {
     let noteID: UUID
@@ -11,6 +12,7 @@ struct NoteEditor: NSViewRepresentable {
     var focusRequest: Bool
     var onEscape: () -> Void
     let onCommit: (UUID, String, Data?, NSRange?) -> Void
+    var returnInListPublisher: AnyPublisher<Void, Never>?
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSTextView.scrollableTextView()
@@ -63,6 +65,7 @@ struct NoteEditor: NSViewRepresentable {
         var lastFocusRequest: Bool
         private var saveTask: Task<Void, Never>?
         private var undoManagers: [UUID: UndoManager] = [:]
+        private var returnInListCancellable: AnyCancellable?
 
         var isDirty: Bool = false
 
@@ -70,9 +73,20 @@ struct NoteEditor: NSViewRepresentable {
             self.parent = parent
             self.lastFocusRequest = false
             super.init()
+            returnInListCancellable = parent.returnInListPublisher?
+                .sink { [weak self] _ in
+                    self?.moveCursorToEnd()
+                }
         }
 
-        @MainActor
+        func moveCursorToEnd() {
+            guard let textView = textView else { return }
+            let end = textView.string.utf16.count
+            textView.setSelectedRange(NSRange(location: end, length: 0))
+            textView.scrollRangeToVisible(NSRange(location: end, length: 0))
+            bringFocus()
+        }
+
         func bringFocus() {
             guard let textView = textView else { return }
             Task { @MainActor in

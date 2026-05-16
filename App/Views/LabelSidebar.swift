@@ -4,7 +4,9 @@ import NVStore
 struct LabelSidebar: View {
     @Environment(AppCoordinator.self) private var coordinator
     @Environment(NoteStore.self) private var store
+    @Environment(FocusCoordinator.self) private var focusCoordinator
     @Binding var selectedItem: SidebarItem
+    @FocusState private var sidebarFocused: Bool
 
     private var allLabels: [(name: String, count: Int)] {
         let counts = store.notes.reduce(into: [String: Int]()) { dict, note in
@@ -35,5 +37,15 @@ struct LabelSidebar: View {
             }
         }
         .listStyle(.sidebar)
+        .focused($sidebarFocused)
+        .onChange(of: focusCoordinator.current) { _, new in
+            sidebarFocused = (new == .sidebar)
+        }
+        .onChange(of: sidebarFocused) { _, new in
+            if new && focusCoordinator.current != .sidebar {
+                focusCoordinator.focus(.sidebar)
+            }
+        }
+        .focusRing()
     }
 }

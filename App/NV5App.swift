@@ -13,14 +13,16 @@ extension KeyboardShortcuts.Name {
 @main
 struct NV5App: App {
     @State private var coordinator = AppCoordinator()
+    @State private var focusCoordinator = FocusCoordinator()
 
     var body: some Scene {
         WindowGroup {
             MainView()
                 .environment(coordinator)
                 .environment(coordinator.store)
+                .environment(focusCoordinator)
                 .frame(minWidth: 800, minHeight: 500)
-                .onAppear { coordinator.bootstrap() }
+                .onAppear { coordinator.bootstrap(focusCoordinator: focusCoordinator) }
                 .onOpenURL { url in
                     let handler = URLSchemeHandler(coordinator: coordinator)
                     handler.handle(url)
@@ -32,6 +34,22 @@ struct NV5App: App {
             CommandGroup(replacing: .newItem) {
                 Button("新建笔记") { Task { _ = await coordinator.newNote() } }
                     .keyboardShortcut("n", modifiers: .command)
+            }
+            CommandMenu("导航") {
+                Button("聚焦搜索栏") { focusCoordinator.focus(.searchField) }
+                    .keyboardShortcut("l", modifiers: .command)
+                Button("聚焦搜索栏") { focusCoordinator.focus(.searchField) }
+                    .keyboardShortcut("0", modifiers: .command)
+                Button("聚焦笔记列表") { focusCoordinator.focus(.noteList) }
+                    .keyboardShortcut("2", modifiers: .command)
+                Button("聚焦编辑器") { focusCoordinator.focus(.editor) }
+                    .keyboardShortcut("3", modifiers: .command)
+                Button("聚焦侧栏") { focusCoordinator.focus(.sidebar) }
+                    .keyboardShortcut("1", modifiers: .command)
+            }
+            CommandMenu("命令") {
+                Button("打开命令面板") { focusCoordinator.showPalette = true }
+                    .keyboardShortcut("b", modifiers: [.command, .shift])
             }
             CommandMenu("导出") {
                 Button("复制为 Markdown") { coordinator.copyAsMarkdown() }
@@ -69,12 +87,17 @@ final class AppCoordinator {
     var store: NoteStore
     var sync: SyncCoordinator?
     var query: String = ""
-    var selectedNoteID: UUID?
+    var selectedNoteID: UUID? {
+        didSet {
+            if let old = oldValue, old != selectedNoteID {
+                previousNoteID = old
+            }
+        }
+    }
     var selectedNoteIDs: Set<UUID> = []
+    var previousNoteID: UUID?
     var multiSelectionMode: Bool = false
     var focusTarget: FocusTarget = .none
-    /// Set after newNote() to prevent onChange(filteredNotes) from overriding selection
-    /// before ValueObservation has propagated the new note to store.notes
     var recentlyCreatedNoteID: UUID?
     private var isCreatingNote = false
     private var isBootstrapped = false
@@ -88,7 +111,7 @@ final class AppCoordinator {
         self.store = AppEnvironment.shared.store
     }
 
-    func bootstrap() {
+    func bootstrap(focusCoordinator: FocusCoordinator) {
         guard !isBootstrapped else { return }
         isBootstrapped = true
 
@@ -96,11 +119,76 @@ final class AppCoordinator {
 
         configureWebDAVIfAvailable()
         registerHotKey()
+        registerCommandShortcuts(focusCoordinator: focusCoordinator)
 
         let sp = ServicesProvider(coordinator: self)
         self.servicesProvider = sp
         NSApp.servicesProvider = sp
         NSUpdateDynamicServices()
+    }
+
+    private func registerCommandShortcuts(focusCoordinator: FocusCoordinator) {
+        let ctx = CommandContext(coordinator: self, focus: focusCoordinator)
+        KeyboardShortcuts.onKeyUp(for: .noteNew) {
+            Task { @MainActor in await NewNoteCommand().run(in: ctx) }
+        }
+        KeyboardShortcuts.onKeyUp(for: .noteNewFromSearch) {
+            Task { @MainActor in await NewNoteFromSearchCommand().run(in: ctx) }
+        }
+        KeyboardShortcuts.onKeyUp(for: .noteDelete) {
+            Task { @MainActor in await DeleteNoteCommand().run(in: ctx) }
+        }
+        KeyboardShortcuts.onKeyUp(for: .noteArchiveToggle) {
+            Task { @MainActor in await ArchiveToggleCommand().run(in: ctx) }
+        }
+        KeyboardShortcuts.onKeyUp(for: .noteLabelAdd) {
+            Task { @MainActor in await AddLabelCommand().run(in: ctx) }
+        }
+        KeyboardShortcuts.onKeyUp(for: .noteCopyMarkdown) {
+            Task { @MainActor in await CopyMarkdownCommand().run(in: ctx) }
+        }
+        KeyboardShortcuts.onKeyUp(for: .noteCopyRichText) {
+            Task { @MainActor in await CopyRichTextCommand().run(in: ctx) }
+        }
+        KeyboardShortcuts.onKeyUp(for: .noteCopyPlainText) {
+            Task { @MainActor in await CopyPlainTextCommand().run(in: ctx) }
+        }
+        KeyboardShortcuts.onKeyUp(for: .noteExport) {
+            Task { @MainActor in await ExportNoteCommand().run(in: ctx) }
+        }
+        KeyboardShortcuts.onKeyUp(for: .noteShare) {
+            Task { @MainActor in await ShareNoteCommand().run(in: ctx) }
+        }
+        KeyboardShortcuts.onKeyUp(for: .navSearch) {
+            Task { @MainActor in await FocusSearchCommand().run(in: ctx) }
+        }
+        KeyboardShortcuts.onKeyUp(for: .navSidebar) {
+            Task { @MainActor in await FocusSidebarCommand().run(in: ctx) }
+        }
+        KeyboardShortcuts.onKeyUp(for: .navList) {
+            Task { @MainActor in await FocusListCommand().run(in: ctx) }
+        }
+        KeyboardShortcuts.onKeyUp(for: .navEditor) {
+            Task { @MainActor in await FocusEditorCommand().run(in: ctx) }
+        }
+        KeyboardShortcuts.onKeyUp(for: .navToggleSidebar) {
+            Task { @MainActor in await ToggleSidebarCommand().run(in: ctx) }
+        }
+        KeyboardShortcuts.onKeyUp(for: .navBackToPrevious) {
+            Task { @MainActor in await BackToPreviousCommand().run(in: ctx) }
+        }
+        KeyboardShortcuts.onKeyUp(for: .appCommandPalette) {
+            Task { @MainActor in await CommandPaletteCommand().run(in: ctx) }
+        }
+        KeyboardShortcuts.onKeyUp(for: .appPreferencesShortcuts) {
+            Task { @MainActor in await ShortcutsPreferencesCommand().run(in: ctx) }
+        }
+        KeyboardShortcuts.onKeyUp(for: .focusSearchF) {
+            Task { @MainActor in await FocusSearchCommand().run(in: ctx) }
+        }
+        KeyboardShortcuts.onKeyUp(for: .focusSearchZero) {
+            Task { @MainActor in await FocusSearchCommand().run(in: ctx) }
+        }
     }
 
     private func configureWebDAVIfAvailable() {
@@ -142,8 +230,6 @@ final class AppCoordinator {
             print("[NV5] Failed to create note: \(error)")
             return nil
         }
-        // Set selection BEFORE clearing query, so onChange(of: filteredNotes)
-        // sees the new note ID and doesn't override it with the first item
         self.recentlyCreatedNoteID = note.id
         self.selectedNoteID = note.id
         self.focusTarget = .editor
@@ -165,12 +251,20 @@ final class AppCoordinator {
         }
     }
 
+    func switchToPreviousNote() {
+        guard let prev = previousNoteID else { return }
+        let exists = store.notes.contains(where: { $0.id == prev })
+            || store.archivedNotes.contains(where: { $0.id == prev })
+        if exists {
+            selectedNoteID = prev
+        }
+    }
+
     func triggerSync() {
         Task {
             do {
                 try await sync?.sync()
             } catch {
-                // sync.status is already updated to .error inside sync()
                 print("[NV5] Sync failed: \(error)")
             }
         }
@@ -226,7 +320,6 @@ final class AppCoordinator {
             return
         }
 
-        // request access to security scoped resource
         let accessing = dir.startAccessingSecurityScopedResource()
 
         Task {

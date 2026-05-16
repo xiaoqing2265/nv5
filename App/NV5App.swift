@@ -33,36 +33,23 @@ struct NV5App: App {
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("新建笔记") { Task { _ = await coordinator.newNote() } }
-                    .keyboardShortcut("n", modifiers: .command)
             }
             CommandMenu("导航") {
                 Button("聚焦搜索栏") { focusCoordinator.focus(.searchField) }
-                    .keyboardShortcut("l", modifiers: .command)
-                Button("聚焦搜索栏") { focusCoordinator.focus(.searchField) }
-                    .keyboardShortcut("0", modifiers: .command)
                 Button("聚焦笔记列表") { focusCoordinator.focus(.noteList) }
-                    .keyboardShortcut("2", modifiers: .command)
                 Button("聚焦编辑器") { focusCoordinator.focus(.editor) }
-                    .keyboardShortcut("3", modifiers: .command)
                 Button("聚焦侧栏") { focusCoordinator.focus(.sidebar) }
-                    .keyboardShortcut("1", modifiers: .command)
             }
             CommandMenu("命令") {
                 Button("打开命令面板") { focusCoordinator.showPalette = true }
-                    .keyboardShortcut("b", modifiers: [.command, .shift])
             }
             CommandMenu("导出") {
                 Button("复制为 Markdown") { coordinator.copyAsMarkdown() }
-                    .keyboardShortcut("c", modifiers: [.command, .shift])
                 Button("复制为富文本") { coordinator.copyAsRichText() }
-                    .keyboardShortcut("r", modifiers: [.command, .shift])
                 Button("复制为纯文本") { coordinator.copyAsPlainText() }
-                    .keyboardShortcut("t", modifiers: [.command, .shift])
                 Divider()
                 Button("导出到文件") { coordinator.exportCurrentNote() }
-                    .keyboardShortcut("e", modifiers: [.command, .shift])
                 Button("导出选项...") { coordinator.showExportPanel() }
-                    .keyboardShortcut("e", modifiers: [.command, .option, .shift])
             }
         }
 
@@ -76,13 +63,6 @@ struct NV5App: App {
 @MainActor
 @Observable
 final class AppCoordinator {
-    enum FocusTarget: Hashable {
-        case searchField
-        case editor
-        case titleField
-        case none
-    }
-
     var database: Database
     var store: NoteStore
     var sync: SyncCoordinator?
@@ -97,10 +77,10 @@ final class AppCoordinator {
     var selectedNoteIDs: Set<UUID> = []
     var previousNoteID: UUID?
     var multiSelectionMode: Bool = false
-    var focusTarget: FocusTarget = .none
     var recentlyCreatedNoteID: UUID?
     private var isCreatingNote = false
     private var isBootstrapped = false
+    private weak var focusCoordinator: FocusCoordinator?
 
     private var exportService: ExportService
     private var servicesProvider: ServicesProvider?
@@ -114,6 +94,7 @@ final class AppCoordinator {
     func bootstrap(focusCoordinator: FocusCoordinator) {
         guard !isBootstrapped else { return }
         isBootstrapped = true
+        self.focusCoordinator = focusCoordinator
 
         WebDAVSettings.migrateIfNeeded()
 
@@ -183,12 +164,6 @@ final class AppCoordinator {
         KeyboardShortcuts.onKeyUp(for: .appPreferencesShortcuts) {
             Task { @MainActor in await ShortcutsPreferencesCommand().run(in: ctx) }
         }
-        KeyboardShortcuts.onKeyUp(for: .focusSearchF) {
-            Task { @MainActor in await FocusSearchCommand().run(in: ctx) }
-        }
-        KeyboardShortcuts.onKeyUp(for: .focusSearchZero) {
-            Task { @MainActor in await FocusSearchCommand().run(in: ctx) }
-        }
     }
 
     private func configureWebDAVIfAvailable() {
@@ -212,14 +187,31 @@ final class AppCoordinator {
         } else {
             NSApp.activate(ignoringOtherApps: true)
             NSApp.mainWindow?.makeKeyAndOrderFront(nil)
-            self.focusTarget = .searchField
+            focusCoordinator?.focus(.searchField)
         }
     }
 
+    /// macOS 标准 ⌘N：创建空标题笔记
     func newNote() async -> UUID? {
-        guard !isCreatingNote else {
+        guard !isCreatingNote else { return nil }
+        isCreatingNote = true
+        defer { isCreatingNote = false }
+        let note = Note(title: "")
+        do {
+            try await store.upsert(note)
+        } catch {
+            print("[NV5] Failed to create note: \(error)")
             return nil
         }
+        self.recentlyCreatedNoteID = note.id
+        self.selectedNoteID = note.id
+        focusCoordinator?.focus(.editor)
+        return note.id
+    }
+
+    /// Search-or-Create / ⌘⇧N：用当前 query 作标题创建笔记
+    func newNoteFromQuery() async -> UUID? {
+        guard !isCreatingNote else { return nil }
         isCreatingNote = true
         defer { isCreatingNote = false }
         let title = query.isEmpty ? "无标题" : query
@@ -232,7 +224,7 @@ final class AppCoordinator {
         }
         self.recentlyCreatedNoteID = note.id
         self.selectedNoteID = note.id
-        self.focusTarget = .editor
+        focusCoordinator?.focus(.editor)
         self.query = ""
         return note.id
     }
@@ -244,7 +236,7 @@ final class AppCoordinator {
             try await store.upsert(note)
             self.recentlyCreatedNoteID = note.id
             self.selectedNoteID = note.id
-            self.focusTarget = .editor
+            focusCoordinator?.focus(.editor)
             self.query = ""
         } catch {
             showError(error)
@@ -258,6 +250,14 @@ final class AppCoordinator {
         if exists {
             selectedNoteID = prev
         }
+    }
+
+    func focusSearch() {
+        focusCoordinator?.focus(.searchField)
+    }
+
+    func focusEditor() {
+        focusCoordinator?.focus(.editor)
     }
 
     func triggerSync() {

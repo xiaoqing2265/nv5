@@ -28,7 +28,7 @@ struct EditorColumn: View {
                             focusCoordinator.focus(.editor)
                         }
                     }
-                    .focusRing(capturesTab: false)
+                    .focusRing()
             } else {
                 EmptyStateView(
                     title: "选择或创建笔记",

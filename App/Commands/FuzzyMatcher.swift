@@ -1,5 +1,5 @@
-enum FuzzyMatcher {
-    static func score(query: String, title: String, keywords: [String], subtitle: String?) -> Double? {
+public enum FuzzyMatcher {
+    public static func score(query: String, title: String, keywords: [String], subtitle: String?) -> Double? {
         let q = query.lowercased()
         var best: Double = 0
 

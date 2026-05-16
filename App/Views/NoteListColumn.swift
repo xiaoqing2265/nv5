@@ -125,8 +125,6 @@ struct NoteListColumn: View {
                         if newNotes.contains(where: { $0.id == createdID }) {
                             coordinator.selectedNoteID = createdID
                             coordinator.recentlyCreatedNoteID = nil
-                            coordinator.focusTarget = .none
-                            coordinator.focusTarget = .editor
                             focusCoordinator.focus(.editor)
 
                             Task { @MainActor in
@@ -174,7 +172,7 @@ struct NoteListColumn: View {
     private func searchBarReturn() {
         let notes = filteredNotes
         if notes.isEmpty && !coordinator.query.isEmpty {
-            Task { _ = await coordinator.newNote() }
+            Task { _ = await coordinator.newNoteFromQuery() }
         } else if !notes.isEmpty {
             if coordinator.selectedNoteID == nil {
                 coordinator.selectedNoteID = notes.first?.id
@@ -194,7 +192,10 @@ struct NoteListColumn: View {
     }
 
     private func searchBarArrowUp() {
-        // no-op or move to last item
+        let notes = filteredNotes
+        guard !notes.isEmpty else { return }
+        coordinator.selectedNoteID = notes.last?.id
+        focusCoordinator.focus(.noteList)
     }
 
     private func delete(_ note: Note) {

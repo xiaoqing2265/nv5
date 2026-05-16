@@ -22,12 +22,12 @@ final class URLSchemeHandler {
         case "search":
             let rawQ = comp?.queryItems?.first(where: { $0.name == "q" })?.value ?? ""
             coordinator.query = rawQ.removingPercentEncoding ?? rawQ
-            coordinator.focusTarget = .searchField
+            coordinator.focusSearch()
         case "open":
             if let idStr = comp?.queryItems?.first(where: { $0.name == "id" })?.value,
                let id = UUID(uuidString: idStr) {
                 coordinator.selectedNoteID = id
-                coordinator.focusTarget = .editor
+                coordinator.focusEditor()
             }
         default: break
         }

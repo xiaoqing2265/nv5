@@ -12,7 +12,7 @@ enum SidebarItem: Hashable {
 struct MainView: View {
     @Environment(AppCoordinator.self) private var coordinator
     @Environment(FocusCoordinator.self) private var focusCoordinator
-    @State private var visibility: NavigationSplitViewVisibility = .doubleColumn
+    @State private var visibility: NavigationSplitViewVisibility = .all
     @State private var selectedItem: SidebarItem = .all
     @AppStorage("isWindowPinned") private var isWindowPinned: Bool = false
 
@@ -45,7 +45,9 @@ struct MainView: View {
             updateWindowLevel(newValue)
         }
         .onChange(of: focusCoordinator.sidebarVisible) { _, new in
-            visibility = new ? .doubleColumn : .detailOnly
+            withAnimation {
+                visibility = new ? .all : .doubleColumn
+            }
         }
         .sheet(isPresented: Binding(
             get: { focusCoordinator.showPalette },

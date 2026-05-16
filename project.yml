@@ -175,6 +175,21 @@ targets:
       properties:
         com.apple.security.app-sandbox: false
 
+  NV5AppTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests/CommandsTests
+    dependencies:
+      - target: NV5App
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/NV5.app/Contents/MacOS/NV5"
+
 schemes:
   NV5App:
     build:
@@ -187,9 +202,19 @@ schemes:
       gatherCoverageData: true
       targets:
         - NVSyncTests
+        - NV5AppTests
     profile:
       config: Release
     analyze:
       config: Debug
     archive:
       config: Release
+  NV5AppTests:
+    build:
+      targets:
+        NV5AppTests: all
+    test:
+      config: Debug
+      gatherCoverageData: true
+      targets:
+        - NV5AppTests

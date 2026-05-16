@@ -24,8 +24,12 @@ public final class FocusCoordinator {
     }
 
     public func escapeToSearch() {
-        current = .searchField
-        selectAllSubject.send()
+        if current != .searchField {
+            current = .searchField
+        }
+        DispatchQueue.main.async { [weak self] in
+            self?.selectAllSubject.send()
+        }
     }
 
     /// §3.5 QA #5: Return in list → focus editor with cursor at end

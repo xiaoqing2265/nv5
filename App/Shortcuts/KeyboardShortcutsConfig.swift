@@ -22,9 +22,4 @@ extension KeyboardShortcuts.Name {
 
     static let appCommandPalette = Self("app.commandPalette", default: .init(.b, modifiers: [.command, .shift]))
     static let appPreferencesShortcuts = Self("app.preferences.shortcuts")
-
-    // §3.3 ⌘F — 同 ⌘L（macOS 习惯）
-    static let focusSearchF = Self("navigation.focus.search.f", default: .init(.f, modifiers: [.command]))
-    // §3.3 ⌘0 — 聚焦搜索栏
-    static let focusSearchZero = Self("navigation.focus.search.zero", default: .init(.zero, modifiers: [.command]))
 }

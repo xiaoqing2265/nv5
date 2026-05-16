@@ -26,10 +26,10 @@ struct NewNoteFromSearchCommand: AppCommand {
     let category: CommandCategory = .note
     let symbol = "plus.square"
 
-    func isEnabled(in context: CommandContext) -> Bool { !context.coordinator.query.isEmpty }
+    func isEnabled(in context: CommandContext) -> Bool { true }
 
     func run(in context: CommandContext) async {
-        _ = await context.coordinator.newNote()
+        _ = await context.coordinator.newNoteFromQuery()
         context.focus.focus(.editor)
     }
 }

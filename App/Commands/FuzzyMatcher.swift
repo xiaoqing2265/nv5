@@ -21,7 +21,6 @@ public enum FuzzyMatcher {
     }
 
     private static func subsequenceScore(_ q: String, in text: String) -> Double? {
-        var qi = q.startIndex
         var consecutive = 0
         var maxConsecutive = 0
         let qChars = Array(q)

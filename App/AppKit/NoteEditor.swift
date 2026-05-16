@@ -74,7 +74,7 @@ struct NoteEditor: NSViewRepresentable {
 
         var isDirty: Bool = false
 
-        init(parent: NoteEditor) {
+        @MainActor init(parent: NoteEditor) {
             self.parent = parent
             self.lastFocusRequest = false
             super.init()
@@ -84,7 +84,7 @@ struct NoteEditor: NSViewRepresentable {
                 }
         }
 
-        func moveCursorToEnd() {
+        @MainActor func moveCursorToEnd() {
             guard let textView = textView else { return }
             let end = textView.string.utf16.count
             textView.setSelectedRange(NSRange(location: end, length: 0))
@@ -102,7 +102,7 @@ struct NoteEditor: NSViewRepresentable {
             }
         }
 
-        func loadNote(id: UUID, body: String, attributes: Data?, selection: NSRange?) {
+        @MainActor func loadNote(id: UUID, body: String, attributes: Data?, selection: NSRange?) {
             guard let textView = textView else { return }
             
             commitPendingIfNeeded()
@@ -177,7 +177,7 @@ struct NoteEditor: NSViewRepresentable {
             return false
         }
 
-        func commitPendingIfNeeded() {
+        @MainActor func commitPendingIfNeeded() {
             guard isDirty,
                   let id = currentNoteID,
                   let textView = textView,
@@ -193,7 +193,7 @@ struct NoteEditor: NSViewRepresentable {
             isDirty = false
         }
 
-        func applyHighlight(query: String) {
+        @MainActor func applyHighlight(query: String) {
             guard query != lastHighlightQuery else { return }
             lastHighlightQuery = query
 

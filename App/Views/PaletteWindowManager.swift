@@ -63,11 +63,11 @@ final class PaletteWindowManager {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            guard let self = self,
-                  let window = notification.object as? NSWindow,
-                  window != self.panel else { return }
-            if window.title.contains("NV5") || window == NSApp.mainWindow {
-                Task { @MainActor in
+            Task { @MainActor [weak self] in
+                guard let self = self,
+                      let window = notification.object as? NSWindow,
+                      window != self.panel else { return }
+                if window.title.contains("NV5") || window == NSApp.mainWindow {
                     self.hide()
                     self.focusCoordinator?.showPalette = false
                 }

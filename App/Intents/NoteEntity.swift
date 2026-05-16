@@ -15,7 +15,7 @@ struct NoteEntity: AppEntity {
     @Property(title: "修改时间") var modifiedAt: Date
 
     var displayRepresentation: DisplayRepresentation {
-        DisplayRepresentation(title: "\(title)", subtitle: "\(body.prefix(50))")
+        DisplayRepresentation(title: "\(title)", subtitle: "\(String(body.prefix(50)))")
     }
     
     init(from note: Note) {

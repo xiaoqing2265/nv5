@@ -1,0 +1,53 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate Xcode Project
+        run: xcodegen generate
+
+      - name: Build
+        run: |
+          xcodebuild -project NV5.xcodeproj \
+            -scheme NV5App \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Create DMG
+        run: |
+          brew install create-dmg
+          create-dmg \
+            --volname "NV5" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "NV5.app" 175 190 \
+            --app-drop-link 425 190 \
+            "NV5-${{ github.ref_name }}.dmg" \
+            "build/Build/Products/Release/NV5.app"
+
+      - name: Sign with Sparkle EdDSA
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          echo "$SPARKLE_PRIVATE_KEY" > /tmp/sparkle_key
+          ./bin/sign_update -f /tmp/sparkle_key NV5-${{ github.ref_name }}.dmg
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: NV5-${{ github.ref_name }}.dmg
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, 'beta') }}

@@ -120,7 +120,9 @@ public final class SyncCoordinator {
     private func observeSettingsChanges() {
         settingsObserverTask?.cancel()
         settingsObserverTask = Task { @MainActor [weak self] in
-            let stream = NotificationCenter.default.notifications(named: UserDefaults.didChangeNotification)
+            let stream = NotificationCenter.default
+                .notifications(named: UserDefaults.didChangeNotification)
+                .map { _ in () }
             for await _ in stream {
                 guard !Task.isCancelled else { break }
                 if let s = self {

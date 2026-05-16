@@ -32,7 +32,7 @@ jobs:
       - name: Locate Sparkle bin
         id: sparkle
         run: |
-          SPARKLE_BIN=$(find ~/Library/Developer/Xcode/DerivedData -name "sign_update" -type f 2>/dev/null | head -n 1)
+          SPARKLE_BIN=$(find ~/Library/Developer/Xcode/DerivedData -name "sign_update" -type f -not -path "*/old_dsa_scripts/*" 2>/dev/null | head -n 1)
           if [ -z "$SPARKLE_BIN" ]; then
             SPARKLE_BIN=$(find build -name "sign_update" -type f 2>/dev/null | head -n 1)
           fi

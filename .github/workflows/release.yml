@@ -6,11 +6,15 @@ on:
 jobs:
   build:
     runs-on: macos-14
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install xcodegen
-        run: brew install xcodegen
+        run: brew install xcodegen create-dmg
 
       - name: Generate Xcode Project
         run: xcodegen generate
@@ -25,9 +29,26 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
 
+      - name: Locate Sparkle bin
+        id: sparkle
+        run: |
+          SPARKLE_BIN=$(find ~/Library/Developer/Xcode/DerivedData -name "sign_update" -type f 2>/dev/null | head -n 1)
+          if [ -z "$SPARKLE_BIN" ]; then
+            SPARKLE_BIN=$(find build -name "sign_update" -type f 2>/dev/null | head -n 1)
+          fi
+          if [ -z "$SPARKLE_BIN" ]; then
+            SPARKLE_BIN=$(find ~/Library/Caches/org.swift.swiftpm -name "sign_update" -type f 2>/dev/null | head -n 1)
+          fi
+          if [ -z "$SPARKLE_BIN" ]; then
+            echo "ERROR: sign_update not found"
+            exit 1
+          fi
+          echo "Found sign_update at: $SPARKLE_BIN"
+          echo "bin_dir=$(dirname $SPARKLE_BIN)" >> $GITHUB_OUTPUT
+
       - name: Create DMG
         run: |
-          brew install create-dmg
+          mkdir -p dist
           create-dmg \
             --volname "NV5" \
             --window-pos 200 120 \
@@ -35,19 +56,45 @@ jobs:
             --icon-size 100 \
             --icon "NV5.app" 175 190 \
             --app-drop-link 425 190 \
-            "NV5-${{ github.ref_name }}.dmg" \
+            "dist/NV5-${{ github.ref_name }}.dmg" \
             "build/Build/Products/Release/NV5.app"
 
-      - name: Sign with Sparkle EdDSA
+      - name: Sign DMG with Sparkle EdDSA
+        id: sign
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
           echo "$SPARKLE_PRIVATE_KEY" > /tmp/sparkle_key
-          ./bin/sign_update -f /tmp/sparkle_key NV5-${{ github.ref_name }}.dmg
+          SIG=$(${{ steps.sparkle.outputs.bin_dir }}/sign_update \
+            -f /tmp/sparkle_key \
+            "dist/NV5-${{ github.ref_name }}.dmg")
+          rm /tmp/sparkle_key
+          echo "signature=$SIG" >> $GITHUB_OUTPUT
+          echo "Signature: $SIG"
+
+      - name: Update appcast.xml
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          echo "$SPARKLE_PRIVATE_KEY" > /tmp/sparkle_key
+          ${{ steps.sparkle.outputs.bin_dir }}/generate_appcast \
+            --ed-key-file /tmp/sparkle_key \
+            --download-url-prefix "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/" \
+            dist/
+          rm /tmp/sparkle_key
+          cp dist/appcast.xml ./appcast.xml
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout main
+          git add appcast.xml
+          git commit -m "chore: update appcast for ${{ github.ref_name }}" || echo "No changes"
+          git push origin main
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: NV5-${{ github.ref_name }}.dmg
+          files: dist/NV5-${{ github.ref_name }}.dmg
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, 'beta') }}

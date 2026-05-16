@@ -56,7 +56,13 @@
         </dict>
     </array>
     <key>SUFeedURL</key>
-    <string>https://example.com/nv5/appcast.xml</string>
+    <string>https://raw.githubusercontent.com/xiaoqing2265/nv5/main/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>​gKm5tlDUuTv/ombb70hR8GnlP6ract4kAvki27VXirs=</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>86400</integer>
     <key>SUEnableInstallerLauncherService</key>
     <true/>
 </dict>

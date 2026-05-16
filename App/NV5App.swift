@@ -1,5 +1,6 @@
 import SwiftUI
 import KeyboardShortcuts
+import Sparkle
 import NVStore
 import NVSync
 import NVModel
@@ -14,6 +15,7 @@ extension KeyboardShortcuts.Name {
 struct NV5App: App {
     @State private var coordinator = AppCoordinator()
     @State private var focusCoordinator = FocusCoordinator()
+    @StateObject private var updaterController = UpdaterController()
 
     init() {
         CrashReporter.install()
@@ -39,6 +41,9 @@ struct NV5App: App {
                 Button { Task { _ = await coordinator.newNote() } } label: {
                     MenuShortcutLabel(text: "新建笔记", shortcutName: .noteNew)
                 }
+            }
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesView(controller: updaterController)
             }
             CommandMenu("导航") {
                 Button { focusCoordinator.focus(.searchField) } label: {

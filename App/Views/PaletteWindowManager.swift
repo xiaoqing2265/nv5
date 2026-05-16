@@ -7,16 +7,19 @@ final class PaletteWindowManager {
 
     private var panel: NSPanel?
     private var hostingView: NSHostingView<AnyView>?
+    private var observerTokens: [NSObjectProtocol] = []
+    private var focusCoordinator: FocusCoordinator?
 
     private init() {}
 
     func show(coordinator: AppCoordinator, focusCoordinator: FocusCoordinator) {
         if let panel = panel, panel.isVisible {
-            panel.close()
-            self.panel = nil
-            self.hostingView = nil
+            hide()
+            focusCoordinator.showPalette = false
             return
         }
+
+        self.focusCoordinator = focusCoordinator
 
         let paletteView = CommandPaletteView()
             .environment(coordinator)
@@ -55,7 +58,7 @@ final class PaletteWindowManager {
 
         self.panel = panel
 
-        NotificationCenter.default.addObserver(
+        let token = NotificationCenter.default.addObserver(
             forName: NSWindow.didBecomeKeyNotification,
             object: nil,
             queue: .main
@@ -64,9 +67,13 @@ final class PaletteWindowManager {
                   let window = notification.object as? NSWindow,
                   window != self.panel else { return }
             if window.title.contains("NV5") || window == NSApp.mainWindow {
-                self.hide()
+                Task { @MainActor in
+                    self.hide()
+                    self.focusCoordinator?.showPalette = false
+                }
             }
         }
+        observerTokens.append(token)
 
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 100_000_000)
@@ -77,7 +84,8 @@ final class PaletteWindowManager {
     }
 
     func hide() {
-        NotificationCenter.default.removeObserver(self)
+        observerTokens.forEach { NotificationCenter.default.removeObserver($0) }
+        observerTokens.removeAll()
         panel?.close()
         panel = nil
         hostingView = nil

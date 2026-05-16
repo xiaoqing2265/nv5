@@ -1,40 +1,33 @@
 import SwiftUI
 import Sparkle
 
-@Observable
-final class UpdaterController {
-    let updaterController: SPUStandardUpdaterController
+@MainActor
+final class UpdaterController: ObservableObject {
+    let updater: SPUStandardUpdaterController
+    @Published var canCheckForUpdates = false
 
     init() {
-        updaterController = SPUStandardUpdaterController(
+        updater = SPUStandardUpdaterController(
             startingUpdater: true,
             updaterDelegate: nil,
             userDriverDelegate: nil
         )
+        updater.updater.publisher(for: \.canCheckForUpdates)
+            .assign(to: &$canCheckForUpdates)
+    }
+
+    func checkForUpdates() {
+        updater.checkForUpdates(nil)
     }
 }
 
 struct CheckForUpdatesView: View {
-    @ObservedObject var updater: ObservableUpdater
+    @ObservedObject var controller: UpdaterController
 
     var body: some View {
         Button("检查更新…") {
-            updater.updaterController.checkForUpdates(nil)
+            controller.checkForUpdates()
         }
-        .disabled(!updater.updaterController.updater.canCheckForUpdates)
-    }
-}
-
-@MainActor
-@Observable
-final class ObservableUpdater: ObservableObject {
-    let updaterController: SPUStandardUpdaterController
-
-    init() {
-        updaterController = SPUStandardUpdaterController(
-            startingUpdater: true,
-            updaterDelegate: nil,
-            userDriverDelegate: nil
-        )
+        .disabled(!controller.canCheckForUpdates)
     }
 }

@@ -101,15 +101,21 @@ public final class AppCoordinator {
             if let old = oldValue, old != selectedNoteID {
                 previousNoteID = old
             }
+            if let id = selectedNoteID {
+                navigationHistory.record(id)
+            }
         }
     }
     var selectedNoteIDs: Set<UUID> = []
     var previousNoteID: UUID?
     var multiSelectionMode: Bool = false
     var recentlyCreatedNoteID: UUID?
+    var isFullScreenEditor: Bool = false
     private var isCreatingNote = false
     private var isBootstrapped = false
     private weak var focusCoordinator: FocusCoordinator?
+    
+    let navigationHistory = NavigationHistory()
 
     private var exportService: ExportService
     private var servicesProvider: ServicesProvider?
@@ -186,6 +192,15 @@ public final class AppCoordinator {
         }
         KeyboardShortcuts.onKeyUp(for: .navBackToPrevious) {
             Task { @MainActor in await BackToPreviousCommand().run(in: ctx) }
+        }
+        KeyboardShortcuts.onKeyUp(for: .navBack) {
+            Task { @MainActor in await NavigateBackCommand().run(in: ctx) }
+        }
+        KeyboardShortcuts.onKeyUp(for: .navForward) {
+            Task { @MainActor in await NavigateForwardCommand().run(in: ctx) }
+        }
+        KeyboardShortcuts.onKeyUp(for: .viewToggleFullScreenEditor) {
+            Task { @MainActor in await ToggleFullScreenEditorCommand().run(in: ctx) }
         }
         KeyboardShortcuts.onKeyUp(for: .appCommandPalette) {
             Task { @MainActor in await CommandPaletteCommand().run(in: ctx) }
@@ -428,5 +443,25 @@ public final class AppCoordinator {
         alert.informativeText = error.localizedDescription
         alert.addButton(withTitle: "确定")
         alert.runModal()
+    }
+    
+    // MARK: - Full Screen Editor
+    
+    func toggleFullScreenEditor() {
+        isFullScreenEditor.toggle()
+    }
+    
+    // MARK: - Navigation History
+    
+    func navigateBack() {
+        if let noteID = navigationHistory.goBack() {
+            selectedNoteID = noteID
+        }
+    }
+    
+    func navigateForward() {
+        if let noteID = navigationHistory.goForward() {
+            selectedNoteID = noteID
+        }
     }
 }

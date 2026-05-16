@@ -56,6 +56,20 @@ struct MainView: View {
                 PaletteWindowManager.shared.hide()
             }
         }
+        .onChange(of: coordinator.isFullScreenEditor) { _, newValue in
+            withAnimation {
+                visibility = newValue ? .detailOnly : .all
+            }
+        }
+        .onKeyPress(.tab, phases: .down) { event in
+            guard !focusCoordinator.isOverlayActive && !focusCoordinator.showPalette else { return .ignored }
+            if event.modifiers.contains(.shift) {
+                focusCoordinator.focusPrevious()
+            } else {
+                focusCoordinator.focusNext()
+            }
+            return .handled
+        }
     }
 
     private func registerCommands() {

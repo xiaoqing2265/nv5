@@ -238,6 +238,51 @@ struct BackToPreviousCommand: AppCommand {
     }
 }
 
+struct NavigateBackCommand: AppCommand {
+    let id = "navigation.back"
+    let title = "上一个笔记"
+    let subtitle: String? = "导航历史后退"
+    let keywords = ["back", "后退", "上一个"]
+    let category: CommandCategory = .navigation
+    let symbol = "arrow.left"
+
+    func isEnabled(in context: CommandContext) -> Bool { true }
+
+    func run(in context: CommandContext) async {
+        context.coordinator.navigateBack()
+    }
+}
+
+struct NavigateForwardCommand: AppCommand {
+    let id = "navigation.forward"
+    let title = "下一个笔记"
+    let subtitle: String? = "导航历史前进"
+    let keywords = ["forward", "前进", "下一个"]
+    let category: CommandCategory = .navigation
+    let symbol = "arrow.right"
+
+    func isEnabled(in context: CommandContext) -> Bool { true }
+
+    func run(in context: CommandContext) async {
+        context.coordinator.navigateForward()
+    }
+}
+
+struct ToggleFullScreenEditorCommand: AppCommand {
+    let id = "view.toggleFullScreenEditor"
+    let title = "全屏编辑器"
+    let subtitle: String? = "隐藏侧栏和列表，专注编辑"
+    let keywords = ["fullscreen", "全屏", "专注"]
+    let category: CommandCategory = .view
+    let symbol = "arrow.up.left.and.arrow.down.right"
+
+    func isEnabled(in context: CommandContext) -> Bool { true }
+
+    func run(in context: CommandContext) async {
+        context.coordinator.toggleFullScreenEditor()
+    }
+}
+
 // MARK: - App Commands
 
 struct CommandPaletteCommand: AppCommand {
@@ -290,6 +335,9 @@ enum BuiltinCommands {
         FocusEditorCommand(),
         ToggleSidebarCommand(),
         BackToPreviousCommand(),
+        NavigateBackCommand(),
+        NavigateForwardCommand(),
+        ToggleFullScreenEditorCommand(),
         CommandPaletteCommand(),
         ShortcutsPreferencesCommand(),
     ]

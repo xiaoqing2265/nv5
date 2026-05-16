@@ -21,13 +21,18 @@ jobs:
 
       - name: Build
         run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          BUILD_NUMBER=$(git rev-list --count HEAD)
           xcodebuild -project NV5.xcodeproj \
             -scheme NV5App \
             -configuration Release \
             -derivedDataPath build \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            MARKETING_VERSION="$VERSION" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
 
       - name: Locate Sparkle bin
         id: sparkle
@@ -97,4 +102,4 @@ jobs:
         with:
           files: dist/NV5-${{ github.ref_name }}.dmg
           generate_release_notes: true
-          prerelease: ${{ contains(github.ref_name, 'beta') }}
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}

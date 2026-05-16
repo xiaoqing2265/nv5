@@ -1,6 +1,7 @@
 import SwiftUI
 
 public extension Divider {
+    @MainActor
     static func inset(leading: CGFloat = 16) -> some View {
         HStack(spacing: 0) {
             Spacer().frame(width: leading)

@@ -3,6 +3,33 @@ import KeyboardShortcuts
 import NVSync
 import NVExport
 
+// ── 语言枚举 ─────────────────────────────────────────────
+enum AppLanguage: String, CaseIterable, Identifiable {
+    case system = "system"
+    case zhHans = "zh-Hans"
+    case en     = "en"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .system: return "自动（跟随系统）"
+        case .zhHans: return "中文"
+        case .en:     return "English"
+        }
+    }
+
+    /// 写入 UserDefaults 的 AppleLanguages key 所需的值
+    var appleLanguages: [String]? {
+        switch self {
+        case .system: return nil          // nil = 删除 key，恢复跟随系统
+        case .zhHans: return ["zh-Hans"]
+        case .en:     return ["en"]
+        }
+    }
+}
+
+// ── SettingsView ──────────────────────────────────────────
 struct SettingsView: View {
     var body: some View {
         TabView {
@@ -19,19 +46,80 @@ struct SettingsView: View {
     }
 }
 
+// ── GeneralSettings ───────────────────────────────────────
 struct GeneralSettings: View {
-    @AppStorage("editorFontSize") private var fontSize: Double = 14
+    @AppStorage("editorFontSize")      private var fontSize: Double = 14
     @AppStorage("syncIntervalMinutes") private var syncInterval: Double = 5
+    @AppStorage("appLanguage")         private var appLanguageRaw: String = AppLanguage.system.rawValue
+
+    private var appLanguage: Binding<AppLanguage> {
+        Binding(
+            get: { AppLanguage(rawValue: appLanguageRaw) ?? .system },
+            set: { newValue in
+                appLanguageRaw = newValue.rawValue
+                applyLanguage(newValue)
+            }
+        )
+    }
 
     var body: some View {
         Form {
+            // 字体大小
             Slider(value: $fontSize, in: 10...22, step: 1) {
-                Text("编辑器字号: \(Int(fontSize))pt")
+                Text("编辑器字号：\(Int(fontSize))pt")
             }
+
+            // 同步间隔
             Stepper("每 \(Int(syncInterval)) 分钟同步一次",
                     value: $syncInterval, in: 1...60, step: 1)
+
+            Divider()
+
+            // 语言选择
+            Picker("语言", selection: appLanguage) {
+                ForEach(AppLanguage.allCases) { lang in
+                    Text(lang.displayName).tag(lang)
+                }
+            }
+            .pickerStyle(.radioGroup)   // 三个选项用 radioGroup 最清晰
+
+            if appLanguage.wrappedValue != .system {
+                HStack(spacing: 4) {
+                    Image(systemName: "info.circle")
+                        .foregroundStyle(.secondary)
+                    Text("语言更改将在重启应用后生效")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
         .padding()
+    }
+
+    // 把语言偏好写入 UserDefaults，macOS 下次启动时读取
+    private func applyLanguage(_ language: AppLanguage) {
+        if let langs = language.appleLanguages {
+            UserDefaults.standard.set(langs, forKey: "AppleLanguages")
+        } else {
+            UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+        }
+        UserDefaults.standard.synchronize()
+
+        // 弹出重启提示
+        let alert = NSAlert()
+        alert.messageText = "需要重启应用"
+        alert.informativeText = "语言更改将在重启后生效。"
+        alert.addButton(withTitle: "立即重启")
+        alert.addButton(withTitle: "稍后")
+        if alert.runModal() == .alertFirstButtonReturn {
+            // 重启应用
+            let url = Bundle.main.bundleURL
+            let task = Process()
+            task.launchPath = "/usr/bin/open"
+            task.arguments = [url.path]
+            task.launch()
+            NSApp.terminate(nil)
+        }
     }
 }
 

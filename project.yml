@@ -170,6 +170,8 @@ targets:
         ENABLE_HARDENED_RUNTIME: NO
         COMBINE_HIDPI_IMAGES: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        DEVELOPMENT_LANGUAGE: zh-Hans
+        KNOWN_REGIONS: "zh-Hans en Base"
     entitlements:
       path: App/Resources/NV5App.entitlements
       properties:

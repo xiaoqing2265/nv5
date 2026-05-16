@@ -7,6 +7,7 @@ public enum CommandCategory: String, CaseIterable, Sendable {
     case exportShare = "导出与分享"
     case view = "视图"
     case app = "应用"
+    case recent = "最近使用"
 }
 
 @MainActor

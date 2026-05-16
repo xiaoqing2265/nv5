@@ -25,15 +25,14 @@ struct CommandPaletteView: View {
             
             if !recentCommands.isEmpty {
                 var items: [(category: CommandCategory?, command: ScoredCommand?)] = []
-                items.append((category: .action, command: nil)) // 使用 .action 作为"最近使用"的分类
+                items.append((category: .recent, command: nil))
                 for cmd in recentCommands {
                     items.append((category: nil, command: cmd))
                 }
                 // 添加分隔符
                 items.append((category: nil, command: nil))
                 // 添加所有命令
-                items.append((category: nil, command: nil))
-                for category in CommandCategory.allCases {
+                for category in CommandCategory.allCases where category != .recent {
                     let allInCategory = registry.commands.filter { $0.category == category && $0.isEnabled(in: context) }
                     guard !allInCategory.isEmpty else { continue }
                     items.append((category: category, command: nil))

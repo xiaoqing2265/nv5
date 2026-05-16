@@ -19,8 +19,8 @@ extension KeyboardShortcuts.Name {
     static let navEditor = Self("navigation.focus.editor", default: .init(.three, modifiers: [.command]))
     static let navToggleSidebar = Self("navigation.toggleSidebar", default: .init(.b, modifiers: [.command]))
     static let navBackToPrevious = Self("navigation.backToPrevious", default: .init(.quote, modifiers: [.command]))
-    static let navBack = Self("navigation.back", default: .init(.openBracket, modifiers: [.command]))
-    static let navForward = Self("navigation.forward", default: .init(.closeBracket, modifiers: [.command]))
+    static let navBack = Self("navigation.back", default: .init(.leftBracket, modifiers: [.command]))
+    static let navForward = Self("navigation.forward", default: .init(.rightBracket, modifiers: [.command]))
 
     static let appCommandPalette = Self("app.commandPalette", default: .init(.b, modifiers: [.command, .shift]))
     static let appPreferencesShortcuts = Self("app.preferences.shortcuts")

@@ -4,15 +4,41 @@ import KeyboardShortcuts
 struct CommandPaletteView: View {
     @Environment(AppCoordinator.self) private var coordinator
     @Environment(FocusCoordinator.self) private var focusCoordinator
-    @Environment(\.dismiss) private var dismiss
     @State private var query = ""
     @State private var selectedIndex = 0
 
     private let registry = CommandRegistry.shared
 
-    private var results: [ScoredCommand] {
+    private var groupedResults: [(category: CommandCategory?, command: ScoredCommand?)] {
         let context = CommandContext(coordinator: coordinator, focus: focusCoordinator)
-        return registry.search(query, in: context)
+        let results = registry.search(query, in: context)
+
+        guard !results.isEmpty else { return [] }
+
+        let grouped = Dictionary(grouping: results, by: { $0.command.category })
+        var items: [(category: CommandCategory?, command: ScoredCommand?)] = []
+
+        for category in CommandCategory.allCases {
+            guard let group = grouped[category], !group.isEmpty else { continue }
+            items.append((category: category, command: nil))
+            for cmd in group {
+                items.append((category: nil, command: cmd))
+            }
+        }
+        return items
+    }
+
+    private var selectableIndices: [Int] {
+        groupedResults.enumerated().compactMap { idx, item in
+            item.command != nil ? idx : nil
+        }
+    }
+
+    private var flatSelectionIndex: Int {
+        let indices = selectableIndices
+        guard !indices.isEmpty else { return -1 }
+        let clamped = max(0, min(selectedIndex, indices.count - 1))
+        return indices[clamped]
     }
 
     var body: some View {
@@ -29,7 +55,7 @@ struct CommandPaletteView: View {
 
             Divider()
 
-            if results.isEmpty {
+            if groupedResults.isEmpty {
                 VStack(spacing: 8) {
                     Spacer()
                     Image(systemName: "command")
@@ -42,42 +68,64 @@ struct CommandPaletteView: View {
                 .frame(maxWidth: .infinity)
             } else {
                 ScrollViewReader { proxy in
-                    List(Array(results.enumerated()), id: \.offset, selection: Binding(
-                        get: { selectedIndex },
+                    List(Array(groupedResults.enumerated()), id: \.offset, selection: Binding(
+                        get: { flatSelectionIndex },
                         set: { selectedIndex = $0 }
-                    )) { idx, scored in
-                        CommandRow(command: scored.command)
-                            .tag(idx)
-                            .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
+                    )) { idx, item in
+                        if let category = item.category {
+                            Text(category.rawValue)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fontWeight(.semibold)
+                                .padding(.vertical, 2)
+                                .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 2, trailing: 12))
+                                .listRowBackground(Color.clear)
+                                .tag(-1)
+                        } else if let scored = item.command {
+                            CommandRow(command: scored.command)
+                                .tag(idx)
+                                .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
+                        }
                     }
                     .listStyle(.plain)
-                    .onChange(of: results.count) { _, _ in
+                    .onChange(of: groupedResults.count) { _, _ in
                         selectedIndex = 0
-                        proxy.scrollTo(0, anchor: .top)
+                        if let first = selectableIndices.first {
+                            proxy.scrollTo(first, anchor: .top)
+                        }
                     }
                 }
             }
         }
-        .frame(width: 600, height: min(CGFloat(results.count) * 44 + 44, 480))
+        .frame(width: 600, height: min(CGFloat(selectableIndices.count) * 44 + (query.isEmpty ? 200 : 44), 480))
         .onKeyPress(.escape) {
-            dismiss()
+            PaletteWindowManager.shared.hide()
+            focusCoordinator.showPalette = false
             return .handled
         }
         .onKeyPress(.upArrow) {
-            selectedIndex = max(0, selectedIndex - 1)
+            guard !selectableIndices.isEmpty else { return .ignored }
+            let currentPos = selectableIndices.firstIndex(of: flatSelectionIndex) ?? 0
+            let newPos = max(0, currentPos - 1)
+            selectedIndex = newPos
             return .handled
         }
         .onKeyPress(.downArrow) {
-            selectedIndex = min(results.count - 1, selectedIndex + 1)
+            guard !selectableIndices.isEmpty else { return .ignored }
+            let currentPos = selectableIndices.firstIndex(of: flatSelectionIndex) ?? -1
+            let newPos = min(selectableIndices.count - 1, currentPos + 1)
+            selectedIndex = max(0, newPos)
             return .handled
         }
     }
 
     private func executeSelected() {
-        guard !results.isEmpty, selectedIndex < results.count else { return }
+        let idx = flatSelectionIndex
+        guard idx >= 0, idx < groupedResults.count, let scored = groupedResults[idx].command else { return }
         let context = CommandContext(coordinator: coordinator, focus: focusCoordinator)
-        Task { await results[selectedIndex].command.run(in: context) }
-        dismiss()
+        Task { await scored.command.run(in: context) }
+        PaletteWindowManager.shared.hide()
+        focusCoordinator.showPalette = false
     }
 }
 

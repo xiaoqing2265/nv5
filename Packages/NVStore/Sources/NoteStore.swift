@@ -37,7 +37,7 @@ public final class NoteStore {
             }
 
             do {
-                for try await notes in observation.values(in: writer) {
+                for try await notes in observation.values(in: writer, scheduling: .async(onQueue: DispatchQueue.global(qos: .userInitiated))) {
                     await MainActor.run {
                         self?.notes = notes
                         self?.observationError = nil
@@ -63,7 +63,7 @@ public final class NoteStore {
             }
 
             do {
-                for try await archived in observation.values(in: writer) {
+                for try await archived in observation.values(in: writer, scheduling: .async(onQueue: DispatchQueue.global(qos: .userInitiated))) {
                     await MainActor.run {
                         self?.archivedNotes = archived
                     }
@@ -75,13 +75,13 @@ public final class NoteStore {
     }
 
     public func upsert(_ note: Note) async throws {
-        let now = Date()
         let noteID = note.id
         let noteTitle = note.title
         let noteBody = note.body
         let noteBodyAttributes = note.bodyAttributes
         let noteLabels = note.labels
         let noteCreatedAt = note.createdAt
+        let noteModifiedAt = note.modifiedAt
         let noteDeletedLocally = note.deletedLocally
         let noteEtag = note.etag
         let noteRemotePath = note.remotePath
@@ -90,7 +90,7 @@ public final class NoteStore {
         let noteIsEncrypted = note.isEncrypted
         let noteArchived = note.archived
 
-        try await database.writer.write { [noteID, noteTitle, noteBody, noteBodyAttributes, noteLabels, noteCreatedAt, noteDeletedLocally, noteEtag, noteRemotePath, noteLastSyncedAt, noteLastSelectedRange, noteIsEncrypted, noteArchived, now] db in
+        try await database.writer.write { [noteID, noteTitle, noteBody, noteBodyAttributes, noteLabels, noteCreatedAt, noteModifiedAt, noteDeletedLocally, noteEtag, noteRemotePath, noteLastSyncedAt, noteLastSelectedRange, noteIsEncrypted, noteArchived] db in
             var toSave = Note(
                 id: noteID,
                 title: noteTitle,
@@ -98,7 +98,7 @@ public final class NoteStore {
                 bodyAttributes: noteBodyAttributes,
                 labels: noteLabels,
                 createdAt: noteCreatedAt,
-                modifiedAt: now,
+                modifiedAt: noteModifiedAt,
                 lastSelectedRange: noteLastSelectedRange,
                 isEncrypted: noteIsEncrypted,
                 etag: noteEtag,

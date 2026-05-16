@@ -49,11 +49,12 @@ struct MainView: View {
                 visibility = new ? .all : .doubleColumn
             }
         }
-        .sheet(isPresented: Binding(
-            get: { focusCoordinator.showPalette },
-            set: { focusCoordinator.showPalette = $0 }
-        )) {
-            CommandPaletteView()
+        .onChange(of: focusCoordinator.showPalette) { _, show in
+            if show {
+                PaletteWindowManager.shared.show(coordinator: coordinator, focusCoordinator: focusCoordinator)
+            } else {
+                PaletteWindowManager.shared.hide()
+            }
         }
     }
 

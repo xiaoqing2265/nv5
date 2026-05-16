@@ -11,6 +11,8 @@ public final class FocusCoordinator {
     public let selectAllSubject = PassthroughSubject<Void, Never>()
     public let returnInListSubject = PassthroughSubject<Void, Never>()
 
+    public init() {}
+
     public func focus(_ target: FocusTarget) {
         current = target
     }

@@ -71,6 +71,8 @@ public final class SyncCoordinator {
     private nonisolated(unsafe) var pollTask: Task<Void, Never>?
     private nonisolated(unsafe) var settingsObserverTask: Task<Void, Never>?
     private nonisolated(unsafe) var inflightSync: Task<Void, Error>?
+    private nonisolated(unsafe) let syncLock = NSLock()
+    private nonisolated(unsafe) var consecutiveFailures: Int = 0
 
     public init(client: any WebDAVClientProtocol, store: NoteStore, database: Database, crypto: CryptoEngine? = nil) {
         self.client = client
@@ -97,17 +99,25 @@ public final class SyncCoordinator {
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 let interval: TimeInterval
+                let failures: Int
                 if let s = self {
-                    interval = s.currentInterval()
+                    failures = s.syncLock.withLock { s.consecutiveFailures }
+                    let base = s.currentInterval()
+                    let backoff = min(base * pow(2.0, Double(failures)), 3600)
+                    let jitter = Double.random(in: -0.1...0.1) * backoff
+                    interval = backoff + jitter
                 } else {
                     interval = 300
+                    failures = 0
                 }
                 try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
                 guard !Task.isCancelled else { break }
                 do {
                     try await self?.sync()
+                    self?.syncLock.withLock { self?.consecutiveFailures = 0 }
                 } catch {
-                    print("[Sync] periodic failed: \(error)")
+                    self?.syncLock.withLock { self?.consecutiveFailures += 1 }
+                    print("[Sync] periodic failed (\(failures + 1)): \(error)")
                 }
             }
         }
@@ -127,15 +137,17 @@ public final class SyncCoordinator {
     }
 
     public func sync() async throws {
-        if let existing = inflightSync {
-            try await existing.value
-            return
+        let task: Task<Void, Error> = syncLock.withLock {
+            if let existing = inflightSync {
+                return existing
+            }
+            let newTask = Task<Void, Error> { [weak self] in
+                try await self?.performSync()
+            }
+            inflightSync = newTask
+            return newTask
         }
-        let task = Task<Void, Error> { [weak self] in
-            try await self?.performSync()
-        }
-        inflightSync = task
-        defer { inflightSync = nil }
+        defer { syncLock.withLock { inflightSync = nil } }
         try await task.value
     }
 
@@ -275,7 +287,12 @@ public final class SyncCoordinator {
             let etag = try await client.upload(path: path, data: data, ifMatch: remoteEtag, ifNoneMatch: nil)
             try await store.markSynced(id: note.id, etag: etag, remotePath: path)
         } catch WebDAVError.preconditionFailed {
-            return
+            let list = try await client.listDirectory(path: "notes")
+            if let res = list.first(where: { uuidFromFilename($0.path) == note.id }) {
+                try await resolveConflict(local: note, remoteResource: res)
+            } else {
+                try await uploadNew(note)
+            }
         }
     }
 
@@ -313,7 +330,7 @@ public final class SyncCoordinator {
         }
     }
 
-    private func resolveConflict(local: Note, remoteResource: WebDAVResource) async throws {
+    func resolveConflict(local: Note, remoteResource: WebDAVResource) async throws {
         let downloadResult: (Data, String?)?
         do {
             downloadResult = try await client.download(path: "notes/\(remoteResource.path)", ifNoneMatch: nil)
@@ -336,7 +353,7 @@ public final class SyncCoordinator {
             conflicted.etag = nil
             conflicted.remotePath = nil
             conflicted.lastSyncedAt = nil
-            conflicted.localDirty = false
+            conflicted.localDirty = true
 
             var remoteApplied = remotePayload.toNote(preserving: local)
             remoteApplied.etag = etag
@@ -400,30 +417,36 @@ public final class SyncCoordinator {
         let labels: [String]
     }
 
-    private func encryptPayloadIfNeeded(_ payload: RemoteNotePayload) async throws -> RemoteNotePayload {
-        guard let crypto = crypto, !payload.isEncrypted else { return payload }
-        let container = EncryptedNoteContainer(
-            title: payload.title,
-            body: payload.body,
-            bodyAttributesBase64: payload.bodyAttributesBase64,
-            labels: payload.labels
-        )
-        let data = try JSONEncoder().encode(container)
-        let jsonString = String(decoding: data, as: UTF8.self)
-        let encryptedData = try await crypto.seal(jsonString)
-        return RemoteNotePayload(
-            id: payload.id,
-            title: "Encrypted",
-            body: encryptedData.base64EncodedString(),
-            bodyAttributesBase64: nil,
-            labels: [],
-            createdAt: payload.createdAt,
-            modifiedAt: payload.modifiedAt,
-            isEncrypted: true
-        )
+    func encryptPayloadIfNeeded(_ payload: RemoteNotePayload) async throws -> RemoteNotePayload {
+        guard payload.isEncrypted else {
+            guard let crypto = crypto else { return payload }
+            let container = EncryptedNoteContainer(
+                title: payload.title,
+                body: payload.body,
+                bodyAttributesBase64: payload.bodyAttributesBase64,
+                labels: payload.labels
+            )
+            let data = try JSONEncoder().encode(container)
+            let jsonString = String(decoding: data, as: UTF8.self)
+            let encryptedData = try await crypto.seal(jsonString)
+            return RemoteNotePayload(
+                id: payload.id,
+                title: "Encrypted",
+                body: encryptedData.base64EncodedString(),
+                bodyAttributesBase64: nil,
+                labels: [],
+                createdAt: payload.createdAt,
+                modifiedAt: payload.modifiedAt,
+                isEncrypted: true
+            )
+        }
+        guard let crypto = crypto else {
+            throw SyncError.encryptionRequired(noteID: payload.id)
+        }
+        return payload
     }
 
-    private func decryptPayloadIfNeeded(_ payload: RemoteNotePayload, noteID: UUID) async throws -> RemoteNotePayload {
+    func decryptPayloadIfNeeded(_ payload: RemoteNotePayload, noteID: UUID) async throws -> RemoteNotePayload {
         guard payload.isEncrypted, let crypto = crypto else { return payload }
         guard let encryptedData = Data(base64Encoded: payload.body) else {
             throw SyncError.decryptionFailed(noteID: noteID, reason: "Invalid base64")
@@ -442,18 +465,9 @@ public final class SyncCoordinator {
                 isEncrypted: false
             )
         } else {
-            guard let fallbackString = String(data: decryptedData, encoding: .utf8) else {
-                throw SyncError.decryptionFailed(noteID: noteID, reason: "Invalid utf8 in fallback decryption")
-            }
-            return RemoteNotePayload(
-                id: payload.id,
-                title: payload.title,
-                body: fallbackString,
-                bodyAttributesBase64: payload.bodyAttributesBase64,
-                labels: payload.labels,
-                createdAt: payload.createdAt,
-                modifiedAt: payload.modifiedAt,
-                isEncrypted: false
+            throw SyncError.decryptionFailed(
+                noteID: noteID,
+                reason: "Decrypted payload does not match expected container schema"
             )
         }
     }
@@ -461,10 +475,13 @@ public final class SyncCoordinator {
 
 public enum SyncError: Error, LocalizedError {
     case decryptionFailed(noteID: UUID, reason: String)
+    case encryptionRequired(noteID: UUID)
     public var errorDescription: String? {
         switch self {
         case .decryptionFailed(let id, let reason):
             return "无法解密笔记 (\(id.uuidString.prefix(8))…)：\(reason)"
+        case .encryptionRequired(let id):
+            return "无法加密笔记 (\(id.uuidString.prefix(8))…)，跳过同步以防止明文泄露"
         }
     }
 }

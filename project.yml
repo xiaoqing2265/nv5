@@ -167,13 +167,17 @@ targets:
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_IDENTITY: "-"
         DEVELOPMENT_TEAM: ""
-        ENABLE_HARDENED_RUNTIME: NO
+        ENABLE_HARDENED_RUNTIME: YES
         COMBINE_HIDPI_IMAGES: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     entitlements:
       path: App/Resources/NV5App.entitlements
       properties:
-        com.apple.security.app-sandbox: false
+        com.apple.security.app-sandbox: true
+        com.apple.security.files.user-selected.read-write: true
+        com.apple.security.network.client: true
+        com.apple.security.files.downloads.read-write: true
+        com.apple.security.files.documents.read-write: true
 
   NV5AppTests:
     type: bundle.unit-test
@@ -182,6 +186,8 @@ targets:
       - Tests/CommandsTests
     dependencies:
       - target: NV5App
+      - target: NVModel
+      - target: NVStore
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

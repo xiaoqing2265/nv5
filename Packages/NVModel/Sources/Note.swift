@@ -51,6 +51,11 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
         self.archived = archived
     }
 
+    public var displayTitle: String {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Untitled" : trimmed
+    }
+
     enum CodingKeys: String, CodingKey {
         case id, title, body, bodyAttributes, labels
         case createdAt, modifiedAt

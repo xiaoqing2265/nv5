@@ -209,7 +209,7 @@ struct NoteRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(note.title.isEmpty ? "Untitled" : note.title)
+                Text(note.displayTitle)
                     .font(NVTheme.Fonts.listTitle)
                     .lineLimit(1)
                 let snippet = note.body.trimmingCharacters(in: .whitespacesAndNewlines)

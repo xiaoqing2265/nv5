@@ -10,9 +10,11 @@ actor MockWebDAVClient: WebDAVClientProtocol {
         files[path] = (data, etag)
     }
 
-    func upload(path: String, data: Data, ifMatch etag: String?) async throws -> String? {
-        // If ifMatch is provided and doesn't match the current ETag, simulate precondition failed.
-        if let ifMatch = etag, let existing = files[path], existing.1 != ifMatch {
+    func upload(path: String, data: Data, ifMatch: String?, ifNoneMatch: String?) async throws -> String? {
+        if let ifMatch = ifMatch, let existing = files[path], existing.1 != ifMatch {
+            throw WebDAVError.preconditionFailed
+        }
+        if let ifNoneMatch = ifNoneMatch, ifNoneMatch == "*", files[path] != nil {
             throw WebDAVError.preconditionFailed
         }
         let newEtag = UUID().uuidString
@@ -21,10 +23,10 @@ actor MockWebDAVClient: WebDAVClientProtocol {
         return newEtag
     }
 
-    func download(path: String, ifNoneMatch etag: String? = nil) async throws -> (Data, String?)? {
-        guard let file = files[path] else { return nil }
-        if let etag = etag, etag == file.1 {
-            return nil // Unchanged
+    func download(path: String, ifNoneMatch: String?) async throws -> (Data, String?)? {
+        guard let file = files[path] else { throw WebDAVError.notFound }
+        if let etag = ifNoneMatch, etag == file.1 {
+            return nil
         }
         return (file.0, file.1)
     }
@@ -41,11 +43,19 @@ actor MockWebDAVClient: WebDAVClientProtocol {
         }
     }
 
+    func ensureBasePath() async throws {
+        // no-op for mock
+    }
+
     func ensureDirectory(_ path: String) async throws {
         // no-op for mock
     }
 
-    func delete(path: String, ifMatch etag: String? = nil) async throws {
+    func ensureDirectoryRecursively(_ path: String) async throws {
+        // no-op for mock
+    }
+
+    func delete(path: String, ifMatch: String?) async throws {
         files.removeValue(forKey: path)
         deletes.append(path)
     }

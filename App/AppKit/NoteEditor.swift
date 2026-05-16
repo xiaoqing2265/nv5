@@ -21,13 +21,14 @@ struct NoteEditor: NSViewRepresentable {
         scrollView.autohidesScrollers = true
 
         let textView = scrollView.documentView as! NSTextView
-        textView.isRichText = true
         textView.allowsUndo = true
+        textView.isRichText = true
+        textView.isFieldEditor = false
         textView.isContinuousSpellCheckingEnabled = true
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
-        textView.isAutomaticLinkDetectionEnabled = true
-        textView.usesFindBar = true
+        textView.isAutomaticLinkDetectionEnabled = false
+        textView.usesFindBar = false
         textView.font = .systemFont(ofSize: 14)
         textView.textContainerInset = NSSize(width: 16, height: 12)
         textView.delegate = context.coordinator
@@ -43,8 +44,11 @@ struct NoteEditor: NSViewRepresentable {
         context.coordinator.parent = self
 
         if context.coordinator.currentNoteID != noteID {
-            context.coordinator.commitPendingIfNeeded()
-            context.coordinator.loadNote(id: noteID, body: initialBody, attributes: initialAttributes, selection: initialSelection)
+            textView.window?.makeFirstResponder(nil)
+            DispatchQueue.main.async {
+                context.coordinator.commitPendingIfNeeded()
+                context.coordinator.loadNote(id: noteID, body: initialBody, attributes: initialAttributes, selection: initialSelection)
+            }
         }
         context.coordinator.applyHighlight(query: highlightQuery)
 
@@ -66,6 +70,7 @@ struct NoteEditor: NSViewRepresentable {
         private var saveTask: Task<Void, Never>?
         private var undoManagers: [UUID: UndoManager] = [:]
         private var returnInListCancellable: AnyCancellable?
+        private var lastHighlightQuery: String = ""
 
         var isDirty: Bool = false
 
@@ -146,14 +151,16 @@ struct NoteEditor: NSViewRepresentable {
             guard let textView = textView else { return }
             isDirty = true
             saveTask?.cancel()
+            let snapshotID = currentNoteID
             saveTask = Task { [weak self] in
                 try? await Task.sleep(nanoseconds: 300_000_000)
                 guard !Task.isCancelled else { return }
-                await MainActor.run { 
+                await MainActor.run {
+                    guard self?.currentNoteID == snapshotID else { return }
                     if let storage = textView.textStorage {
                         TextDecoratorPipeline.runAll(on: storage)
                     }
-                    self?.commitPendingIfNeeded() 
+                    self?.commitPendingIfNeeded()
                 }
             }
         }
@@ -187,9 +194,14 @@ struct NoteEditor: NSViewRepresentable {
         }
 
         func applyHighlight(query: String) {
+            guard query != lastHighlightQuery else { return }
+            lastHighlightQuery = query
+
             guard let textView = textView,
                   let layoutManager = textView.layoutManager,
-                  let storage = textView.textStorage else { return }
+                  let storage = textView.textStorage,
+                  storage.length > 0,
+                  textView.window != nil else { return }
 
             let fullRange = NSRange(location: 0, length: storage.length)
             layoutManager.removeTemporaryAttribute(.backgroundColor, forCharacterRange: fullRange)

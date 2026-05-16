@@ -1,8 +1,8 @@
 import Observation
 
-struct ScoredCommand {
-    let command: AppCommand
-    let score: Double
+public struct ScoredCommand {
+    public let command: AppCommand
+    public let score: Double
 }
 
 extension AppCommand {
@@ -13,21 +13,23 @@ extension AppCommand {
 
 @MainActor
 @Observable
-final class CommandRegistry {
-    static let shared = CommandRegistry()
+public final class CommandRegistry {
+    public static let shared = CommandRegistry()
 
-    private(set) var commands: [AppCommand] = []
+    public private(set) var commands: [AppCommand] = []
 
-    func register(_ command: AppCommand) {
+    public init() {}
+
+    public func register(_ command: AppCommand) {
         precondition(!commands.contains { $0.id == command.id }, "Duplicate command id: \(command.id)")
         commands.append(command)
     }
 
-    func register(_ commands: [AppCommand]) {
+    public func register(_ commands: [AppCommand]) {
         commands.forEach(register)
     }
 
-    func search(_ query: String, in context: CommandContext, limit: Int = 50) -> [ScoredCommand] {
+    public func search(_ query: String, in context: CommandContext, limit: Int = 50) -> [ScoredCommand] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let candidates = commands.filter { $0.isEnabled(in: context) }
 

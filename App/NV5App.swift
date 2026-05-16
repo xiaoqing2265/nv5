@@ -15,6 +15,10 @@ struct NV5App: App {
     @State private var coordinator = AppCoordinator()
     @State private var focusCoordinator = FocusCoordinator()
 
+    init() {
+        CrashReporter.install()
+    }
+
     var body: some Scene {
         WindowGroup {
             MainView()
@@ -32,23 +36,43 @@ struct NV5App: App {
         .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("新建笔记") { Task { _ = await coordinator.newNote() } }
+                Button { Task { _ = await coordinator.newNote() } } label: {
+                    MenuShortcutLabel(text: "新建笔记", shortcutName: .noteNew)
+                }
             }
             CommandMenu("导航") {
-                Button("聚焦搜索栏") { focusCoordinator.focus(.searchField) }
-                Button("聚焦笔记列表") { focusCoordinator.focus(.noteList) }
-                Button("聚焦编辑器") { focusCoordinator.focus(.editor) }
-                Button("聚焦侧栏") { focusCoordinator.focus(.sidebar) }
+                Button { focusCoordinator.focus(.searchField) } label: {
+                    MenuShortcutLabel(text: "聚焦搜索栏", shortcutName: .navSearch)
+                }
+                Button { focusCoordinator.focus(.noteList) } label: {
+                    MenuShortcutLabel(text: "聚焦笔记列表", shortcutName: .navList)
+                }
+                Button { focusCoordinator.focus(.editor) } label: {
+                    MenuShortcutLabel(text: "聚焦编辑器", shortcutName: .navEditor)
+                }
+                Button { focusCoordinator.focus(.sidebar) } label: {
+                    MenuShortcutLabel(text: "聚焦侧栏", shortcutName: .navSidebar)
+                }
             }
             CommandMenu("命令") {
-                Button("打开命令面板") { focusCoordinator.showPalette = true }
+                Button { focusCoordinator.showPalette = true } label: {
+                    MenuShortcutLabel(text: "打开命令面板", shortcutName: .appCommandPalette)
+                }
             }
             CommandMenu("导出") {
-                Button("复制为 Markdown") { coordinator.copyAsMarkdown() }
-                Button("复制为富文本") { coordinator.copyAsRichText() }
-                Button("复制为纯文本") { coordinator.copyAsPlainText() }
+                Button { coordinator.copyAsMarkdown() } label: {
+                    MenuShortcutLabel(text: "复制为 Markdown", shortcutName: .noteCopyMarkdown)
+                }
+                Button { coordinator.copyAsRichText() } label: {
+                    MenuShortcutLabel(text: "复制为富文本", shortcutName: .noteCopyRichText)
+                }
+                Button { coordinator.copyAsPlainText() } label: {
+                    MenuShortcutLabel(text: "复制为纯文本", shortcutName: .noteCopyPlainText)
+                }
                 Divider()
-                Button("导出到文件") { coordinator.exportCurrentNote() }
+                Button { coordinator.exportCurrentNote() } label: {
+                    MenuShortcutLabel(text: "导出到文件", shortcutName: .noteExport)
+                }
                 Button("导出选项...") { coordinator.showExportPanel() }
             }
         }
@@ -62,7 +86,7 @@ struct NV5App: App {
 
 @MainActor
 @Observable
-final class AppCoordinator {
+public final class AppCoordinator {
     var database: Database
     var store: NoteStore
     var sync: SyncCoordinator?
@@ -85,7 +109,7 @@ final class AppCoordinator {
     private var exportService: ExportService
     private var servicesProvider: ServicesProvider?
 
-    init() {
+    public init() {
         self.exportService = ExportService()
         self.database = AppEnvironment.shared.database
         self.store = AppEnvironment.shared.store
@@ -253,11 +277,21 @@ final class AppCoordinator {
     }
 
     func focusSearch() {
-        focusCoordinator?.focus(.searchField)
+        assert(focusCoordinator != nil, "FocusCoordinator unbound")
+        guard let fc = focusCoordinator else {
+            print("[NV5] focusCoordinator not bound, focusSearch() skipped")
+            return
+        }
+        fc.focus(.searchField)
     }
 
     func focusEditor() {
-        focusCoordinator?.focus(.editor)
+        assert(focusCoordinator != nil, "FocusCoordinator unbound")
+        guard let fc = focusCoordinator else {
+            print("[NV5] focusCoordinator not bound, focusEditor() skipped")
+            return
+        }
+        fc.focus(.editor)
     }
 
     func triggerSync() {

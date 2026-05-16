@@ -26,7 +26,10 @@ final class ConflictResolutionTests: XCTestCase {
     @MainActor
     func testConflictResolutionBothModified() async throws {
         let noteID = UUID()
-        var localNote = Note(title: "Local Title")
+        let olderDate = Date(timeIntervalSinceNow: -3600)
+        let newerDate = Date()
+        
+        var localNote = Note(title: "Local Title", modifiedAt: olderDate)
         localNote.id = noteID
         localNote.body = "Local Body"
         localNote.localDirty = true
@@ -35,8 +38,8 @@ final class ConflictResolutionTests: XCTestCase {
             try localNote.insert(db)
         }
 
-        // Create remote payload
-        var remoteNote = Note(title: "Remote Title")
+        // Create remote payload with newer timestamp (remote wins)
+        var remoteNote = Note(title: "Remote Title", modifiedAt: newerDate)
         remoteNote.id = noteID
         remoteNote.body = "Remote Body"
         let remotePayload = RemoteNotePayload(from: remoteNote)

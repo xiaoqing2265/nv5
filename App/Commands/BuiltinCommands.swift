@@ -21,7 +21,7 @@ struct NewNoteCommand: AppCommand {
 struct NewNoteFromSearchCommand: AppCommand {
     let id = "note.new.fromSearch"
     let title = "用搜索词新建笔记"
-    let subtitle: String? = "即使有匹配也强制新建"
+    let subtitle: String? = "即使有匹配也强制新建（query 为空时使用「无标题」）"
     let keywords = ["new", "强制新建", "force create"]
     let category: CommandCategory = .note
     let symbol = "plus.square"

@@ -103,6 +103,12 @@ jobs:
               # Commit and push appcast update
               git config user.name "github-actions[bot]"
               git config user.email "github-actions[bot]@users.noreply.github.com"
+
+              # Ensure we're on main branch and have latest changes
+              git fetch origin main
+              git checkout main
+              git pull origin main
+
               git add appcast.xml
               git commit -m "chore: update appcast for ${{ github.ref_name }}" || echo "No appcast changes"
               git push origin main || echo "Failed to push appcast update"

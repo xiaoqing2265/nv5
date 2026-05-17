@@ -35,6 +35,10 @@ struct SettingsView: View {
         TabView {
             GeneralSettings()
                 .tabItem { Label("通用", systemImage: "gear") }
+            AppearanceSettings()
+                .tabItem { Label("外观", systemImage: "paintbrush") }
+            EditorBehaviorSettings()
+                .tabItem { Label("编辑", systemImage: "pencil.and.scribble") }
             WebDAVSettingsView()
                 .tabItem { Label("同步", systemImage: "icloud") }
             ExportSettings()
@@ -42,7 +46,7 @@ struct SettingsView: View {
             ShortcutsSettingsView()
                 .tabItem { Label("快捷键", systemImage: "keyboard") }
         }
-        .frame(width: 600, height: 520)
+        .frame(width: 700, height: 600)
     }
 }
 
@@ -272,5 +276,319 @@ struct WebDAVSettingsView: View {
         } catch {
             testResult = "✗ 保存失败：\(error.localizedDescription)"
         }
+    }
+}
+
+// MARK: - 主题枚举
+enum AppTheme: String, CaseIterable, Identifiable {
+    case system = "system"
+    case light = "light"
+    case dark = "dark"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .system: return "跟随系统"
+        case .light: return "亮色"
+        case .dark: return "暗色"
+        }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+}
+
+// MARK: - 编辑器字体枚举
+enum EditorFont: String, CaseIterable, Identifiable {
+    case menlo = "Menlo"
+    case monaco = "Monaco"
+    case inconsolata = "Inconsolata"
+    case sourceCodePro = "Source Code Pro"
+    case firaCode = "Fira Code"
+    case jetbrainsMono = "JetBrains Mono"
+
+    var id: String { rawValue }
+
+    var displayName: String { rawValue }
+}
+
+// MARK: - 颜色主题
+struct ColorTheme {
+    let name: String
+    let textColor: Color
+    let backgroundColor: Color
+    let searchHighlightColor: Color
+    let accentColor: Color
+}
+
+let defaultColorThemes: [String: ColorTheme] = [
+    "default": ColorTheme(
+        name: "默认",
+        textColor: .primary,
+        backgroundColor: .white,
+        searchHighlightColor: Color(red: 1.0, green: 1.0, blue: 0.0, opacity: 0.3),
+        accentColor: .blue
+    ),
+    "solarized-light": ColorTheme(
+        name: "Solarized Light",
+        textColor: Color(red: 0.396, green: 0.482, blue: 0.514),
+        backgroundColor: Color(red: 0.992, green: 0.965, blue: 0.890),
+        searchHighlightColor: Color(red: 1.0, green: 1.0, blue: 0.0, opacity: 0.3),
+        accentColor: Color(red: 0.149, green: 0.545, blue: 0.824)
+    ),
+    "solarized-dark": ColorTheme(
+        name: "Solarized Dark",
+        textColor: Color(red: 0.839, green: 0.855, blue: 0.859),
+        backgroundColor: Color(red: 0.0, green: 0.169, blue: 0.212),
+        searchHighlightColor: Color(red: 1.0, green: 1.0, blue: 0.0, opacity: 0.3),
+        accentColor: Color(red: 0.149, green: 0.545, blue: 0.824)
+    ),
+]
+
+// MARK: - AppearanceSettings View
+struct AppearanceSettings: View {
+    @AppStorage("appTheme") private var themeRaw: String = AppTheme.system.rawValue
+    @AppStorage("editorFont") private var fontRaw: String = EditorFont.menlo.rawValue
+    @AppStorage("editorFontSize") private var fontSize: Double = 14
+    @AppStorage("colorTheme") private var colorThemeKey: String = "default"
+    @AppStorage("lineHeight") private var lineHeight: Double = 1.5
+    @AppStorage("letterSpacing") private var letterSpacing: Double = 0
+
+    private var theme: Binding<AppTheme> {
+        Binding(
+            get: { AppTheme(rawValue: themeRaw) ?? .system },
+            set: { themeRaw = $0.rawValue }
+        )
+    }
+
+    private var font: Binding<EditorFont> {
+        Binding(
+            get: { EditorFont(rawValue: fontRaw) ?? .menlo },
+            set: { fontRaw = $0.rawValue }
+        )
+    }
+
+    var body: some View {
+        Form {
+            Section("主题") {
+                Picker("外观", selection: theme) {
+                    ForEach(AppTheme.allCases) { t in
+                        Text(t.displayName).tag(t)
+                    }
+                }
+                .pickerStyle(.radioGroup)
+            }
+
+            Divider()
+
+            Section("字体") {
+                Picker("编辑器字体", selection: font) {
+                    ForEach(EditorFont.allCases) { f in
+                        Text(f.displayName).tag(f)
+                    }
+                }
+
+                HStack {
+                    Text("字号：\(Int(fontSize))pt")
+                    Spacer()
+                    Slider(value: $fontSize, in: 10...24, step: 1)
+                        .frame(maxWidth: 150)
+                }
+
+                HStack {
+                    Text("行高：\(String(format: "%.1f", lineHeight))")
+                    Spacer()
+                    Slider(value: $lineHeight, in: 1.0...2.0, step: 0.1)
+                        .frame(maxWidth: 150)
+                }
+
+                HStack {
+                    Text("字间距：\(String(format: "%.1f", letterSpacing))")
+                    Spacer()
+                    Slider(value: $letterSpacing, in: -0.5...0.5, step: 0.1)
+                        .frame(maxWidth: 150)
+                }
+            }
+
+            Divider()
+
+            Section("颜色主题") {
+                Picker("主题", selection: $colorThemeKey) {
+                    ForEach(defaultColorThemes.keys.sorted(), id: \.self) { key in
+                        if let theme = defaultColorThemes[key] {
+                            Text(theme.name).tag(key)
+                        }
+                    }
+                }
+
+                if let currentTheme = defaultColorThemes[colorThemeKey] {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text("预览")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 8) {
+                                Circle()
+                                    .fill(currentTheme.textColor)
+                                    .frame(width: 16, height: 16)
+                                Text("文本颜色")
+                                    .font(.caption)
+                            }
+
+                            HStack(spacing: 8) {
+                                Circle()
+                                    .fill(currentTheme.backgroundColor)
+                                    .stroke(Color.gray, lineWidth: 0.5)
+                                    .frame(width: 16, height: 16)
+                                Text("背景颜色")
+                                    .font(.caption)
+                            }
+
+                            HStack(spacing: 8) {
+                                Circle()
+                                    .fill(currentTheme.searchHighlightColor)
+                                    .frame(width: 16, height: 16)
+                                Text("搜索高亮")
+                                    .font(.caption)
+                            }
+
+                            HStack(spacing: 8) {
+                                Circle()
+                                    .fill(currentTheme.accentColor)
+                                    .frame(width: 16, height: 16)
+                                Text("强调色")
+                                    .font(.caption)
+                            }
+                        }
+                        .padding(8)
+                        .background(Color(.controlBackgroundColor))
+                        .cornerRadius(6)
+                    }
+                }
+            }
+
+            Divider()
+
+            Section("编辑器预览") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("The quick brown fox jumps over the lazy dog")
+                        .font(.system(size: CGFloat(fontSize), design: .monospaced))
+                        .lineSpacing(lineHeight - 1.0)
+                        .tracking(letterSpacing)
+                        .padding(8)
+                        .background(Color(.controlBackgroundColor))
+                        .cornerRadius(6)
+                }
+            }
+        }
+        .padding()
+    }
+}
+
+// MARK: - Tab 键行为枚举
+enum TabKeyBehavior: String, CaseIterable, Identifiable {
+    case indent = "indent"
+    case nextFocus = "nextFocus"
+    case softIndent = "softIndent"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .indent: return "行缩进"
+        case .nextFocus: return "移动到下一焦点"
+        case .softIndent: return "软缩进（空格）"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .indent: return "按 Tab 键时插入制表符"
+        case .nextFocus: return "按 Tab 键时移动到下一个焦点"
+        case .softIndent: return "按 Tab 键时插入空格"
+        }
+    }
+}
+
+// MARK: - EditorBehaviorSettings View
+struct EditorBehaviorSettings: View {
+    @AppStorage("tabKeyBehavior") private var tabBehaviorRaw: String = TabKeyBehavior.indent.rawValue
+    @AppStorage("enableSpellCheck") private var enableSpellCheck: Bool = true
+    @AppStorage("autoSaveInterval") private var autoSaveInterval: Double = 30
+    @AppStorage("preserveFormatting") private var preserveFormatting: Bool = true
+    @AppStorage("makeLinksClickable") private var makeLinksClickable: Bool = true
+    @AppStorage("suggestNoteLinks") private var suggestNoteLinks: Bool = true
+    @AppStorage("autoSelectRelatedNote") private var autoSelectRelatedNote: Bool = true
+    @AppStorage("confirmDelete") private var confirmDelete: Bool = true
+
+    private var tabBehavior: Binding<TabKeyBehavior> {
+        Binding(
+            get: { TabKeyBehavior(rawValue: tabBehaviorRaw) ?? .indent },
+            set: { tabBehaviorRaw = $0.rawValue }
+        )
+    }
+
+    var body: some View {
+        Form {
+            Section("Tab 键行为") {
+                Picker("Tab 键", selection: tabBehavior) {
+                    ForEach(TabKeyBehavior.allCases) { behavior in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(behavior.displayName).tag(behavior)
+                            Text(behavior.description)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .pickerStyle(.radioGroup)
+            }
+
+            Divider()
+
+            Section("拼写和语法") {
+                Toggle("键入时检查拼写", isOn: $enableSpellCheck)
+            }
+
+            Divider()
+
+            Section("自动保存") {
+                HStack {
+                    Text("自动保存间隔：\(Int(autoSaveInterval))秒")
+                    Spacer()
+                    Slider(value: $autoSaveInterval, in: 10...120, step: 10)
+                        .frame(maxWidth: 150)
+                }
+                Text("设置为 0 禁用自动保存")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Divider()
+
+            Section("格式和链接") {
+                Toggle("复制时保留基本样式", isOn: $preserveFormatting)
+                Toggle("链接可点击", isOn: $makeLinksClickable)
+                Toggle("输入笔记链接时提供建议", isOn: $suggestNoteLinks)
+            }
+
+            Divider()
+
+            Section("笔记行为") {
+                Toggle("搜索时自动选择相关笔记", isOn: $autoSelectRelatedNote)
+                Toggle("删除笔记时需要确认", isOn: $confirmDelete)
+            }
+        }
+        .padding()
     }
 }

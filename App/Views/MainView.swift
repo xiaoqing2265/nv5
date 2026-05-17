@@ -12,10 +12,10 @@ enum SidebarItem: Hashable {
 struct MainView: View {
     @Environment(AppCoordinator.self) private var coordinator
     @Environment(FocusCoordinator.self) private var focusCoordinator
+    @Environment(OverlayManager.self) private var overlayManager
     @State private var visibility: NavigationSplitViewVisibility = .all
     @State private var selectedItem: SidebarItem = .all
     @AppStorage("isWindowPinned") private var isWindowPinned: Bool = false
-    @State private var showTagEditor: Bool = false
     @State private var showKeyboardGuide: Bool = false
 
     var body: some View {
@@ -52,8 +52,8 @@ struct MainView: View {
                     visibility = new ? .all : .doubleColumn
                 }
             }
-            .onChange(of: focusCoordinator.showPalette) { _, show in
-                if show {
+            .onChange(of: overlayManager.isActive(.commandPalette)) { _, isActive in
+                if isActive {
                     PaletteWindowManager.shared.show(coordinator: coordinator, focusCoordinator: focusCoordinator)
                 } else {
                     PaletteWindowManager.shared.hide()
@@ -64,33 +64,8 @@ struct MainView: View {
                     visibility = newValue ? .detailOnly : .all
                 }
             }
-            .onChange(of: focusCoordinator.isOverlayActive) { _, isActive in
-                withAnimation {
-                    // 当命令面板显示时，不显示 TagEditor
-                    showTagEditor = isActive && !focusCoordinator.showPalette
-                }
-            }
-            .onChange(of: focusCoordinator.showCheatSheet) { _, isActive in
-                if isActive {
-                    focusCoordinator.isOverlayActive = true
-                } else {
-                    focusCoordinator.isOverlayActive = false
-                }
-            }
-            .onChange(of: focusCoordinator.showPalette) { _, showPalette in
-                // 当命令面板显示时，隐藏 TagEditor
-                if showPalette && focusCoordinator.isOverlayActive {
-                    withAnimation {
-                        showTagEditor = false
-                    }
-                } else if !showPalette && focusCoordinator.isOverlayActive {
-                    withAnimation {
-                        showTagEditor = true
-                    }
-                }
-            }
             .onKeyPress(.tab, phases: .down) { event in
-                guard !focusCoordinator.isOverlayActive && !focusCoordinator.showPalette else { return .ignored }
+                guard !overlayManager.isAnyActive else { return .ignored }
                 if event.modifiers.contains(.shift) {
                     focusCoordinator.focusPrevious()
                 } else {
@@ -114,11 +89,11 @@ struct MainView: View {
 
     @ViewBuilder
     private var overlayContent: some View {
-        if showTagEditor {
+        if overlayManager.isActive(.tagEditor) {
             TagEditor()
                 .transition(.scale.combined(with: .opacity))
         }
-        if focusCoordinator.showCheatSheet {
+        if overlayManager.isActive(.cheatSheet) {
             CheatSheetView()
                 .transition(.scale.combined(with: .opacity))
         }

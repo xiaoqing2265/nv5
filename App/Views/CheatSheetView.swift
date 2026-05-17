@@ -4,6 +4,7 @@ import KeyboardShortcuts
 struct CheatSheetView: View {
     @Environment(AppCoordinator.self) private var coordinator
     @Environment(FocusCoordinator.self) private var focusCoordinator
+    @Environment(OverlayManager.self) private var overlayManager
     @State private var searchQuery = ""
     
     private let registry = CommandRegistry.shared
@@ -80,8 +81,14 @@ struct CheatSheetView: View {
             }
         }
         .frame(width: 500, height: 450)
+        .onAppear {
+            overlayManager.open(.cheatSheet)
+        }
+        .onDisappear {
+            overlayManager.close(.cheatSheet)
+        }
         .onKeyPress(.escape) {
-            focusCoordinator.showCheatSheet = false
+            overlayManager.close(.cheatSheet)
             return .handled
         }
     }

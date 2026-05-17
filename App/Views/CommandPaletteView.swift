@@ -4,6 +4,7 @@ import KeyboardShortcuts
 struct CommandPaletteView: View {
     @Environment(AppCoordinator.self) private var coordinator
     @Environment(FocusCoordinator.self) private var focusCoordinator
+    @Environment(OverlayManager.self) private var overlayManager
     @State private var query = ""
     @State private var selectedIndex = 0
     @State private var historyIndex = -1
@@ -85,7 +86,7 @@ struct CommandPaletteView: View {
                     .onKeyPress(.escape) {
                         if query.isEmpty {
                             PaletteWindowManager.shared.hide()
-                            focusCoordinator.showPalette = false
+                            overlayManager.close(.commandPalette)
                         } else {
                             query = ""
                             historyIndex = -1
@@ -168,7 +169,7 @@ struct CommandPaletteView: View {
         .frame(width: 600, height: min(CGFloat(selectableIndices.count) * 44 + (query.isEmpty ? 200 : 44), 480))
         .onKeyPress(.escape) {
             PaletteWindowManager.shared.hide()
-            focusCoordinator.showPalette = false
+            overlayManager.close(.commandPalette)
             return .handled
         }
         .onKeyPress(.upArrow) {
@@ -194,7 +195,7 @@ struct CommandPaletteView: View {
         Task { await scored.command.run(in: context) }
         historyStore.record(scored.command.id)
         PaletteWindowManager.shared.hide()
-        focusCoordinator.showPalette = false
+        overlayManager.close(.commandPalette)
     }
 }
 

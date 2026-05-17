@@ -15,10 +15,10 @@ final class PaletteWindowManager {
     func show(coordinator: AppCoordinator, focusCoordinator: FocusCoordinator) {
         if let panel = panel, panel.isVisible {
             hide()
-            focusCoordinator.showPalette = false
             return
         }
 
+        OverlayManager.shared.open(.commandPalette)
         self.focusCoordinator = focusCoordinator
 
         let paletteView = CommandPaletteView()
@@ -70,7 +70,6 @@ final class PaletteWindowManager {
                       window != self.panel else { return }
                 if window.title.contains("NV5") || window == NSApp.mainWindow {
                     self.hide()
-                    self.focusCoordinator?.showPalette = false
                 }
             }
         }
@@ -85,6 +84,7 @@ final class PaletteWindowManager {
     }
 
     func hide() {
+        OverlayManager.shared.close(.commandPalette)
         observerTokens.forEach { NotificationCenter.default.removeObserver($0) }
         observerTokens.removeAll()
         panel?.close()

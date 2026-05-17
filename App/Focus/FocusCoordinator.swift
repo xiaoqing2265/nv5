@@ -6,11 +6,6 @@ import Combine
 public final class FocusCoordinator {
     public var current: FocusTarget = .searchField
     public var sidebarVisible: Bool = true
-    public var showPalette: Bool = false
-    
-    /// 浮层是否激活（命令面板、TagEditor 等）
-    public var isOverlayActive: Bool = false
-    public var showCheatSheet: Bool = false
     
     /// 焦点栈，用于模态返回
     private var focusStack: [FocusTarget] = []
@@ -25,12 +20,12 @@ public final class FocusCoordinator {
     }
 
     public func focusNext() {
-        guard !isOverlayActive else { return }
+        guard !OverlayManager.shared.isAnyActive else { return }
         current = current.next()
     }
 
     public func focusPrevious() {
-        guard !isOverlayActive else { return }
+        guard !OverlayManager.shared.isAnyActive else { return }
         current = current.previous()
     }
 

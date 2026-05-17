@@ -7,6 +7,7 @@ struct TagEditor: View {
     @Environment(AppCoordinator.self) private var coordinator
     @Environment(NoteStore.self) private var store
     @Environment(FocusCoordinator.self) private var focusCoordinator
+    @Environment(OverlayManager.self) private var overlayManager
     @State private var newLabel: String = ""
     @FocusState private var inputFocused: Bool
 
@@ -30,7 +31,7 @@ struct TagEditor: View {
                     .font(.headline)
                 Spacer()
                 Button {
-                    focusCoordinator.isOverlayActive = false
+                    overlayManager.close(.tagEditor)
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.secondary)
@@ -109,13 +110,13 @@ struct TagEditor: View {
         .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
         .onAppear {
             inputFocused = true
-            focusCoordinator.isOverlayActive = true
+            overlayManager.open(.tagEditor)
         }
         .onDisappear {
-            focusCoordinator.isOverlayActive = false
+            overlayManager.close(.tagEditor)
         }
         .onKeyPress(.escape) {
-            focusCoordinator.isOverlayActive = false
+            overlayManager.close(.tagEditor)
             return .handled
         }
     }

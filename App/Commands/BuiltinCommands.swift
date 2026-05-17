@@ -81,7 +81,7 @@ struct AddLabelCommand: AppCommand {
     func isEnabled(in context: CommandContext) -> Bool { context.coordinator.selectedNoteID != nil }
 
     func run(in context: CommandContext) async {
-        context.focus.isOverlayActive = true
+        OverlayManager.shared.open(.tagEditor)
     }
 }
 
@@ -295,7 +295,7 @@ struct CommandPaletteCommand: AppCommand {
     func isEnabled(in context: CommandContext) -> Bool { true }
 
     func run(in context: CommandContext) async {
-        context.focus.showPalette = true
+        OverlayManager.shared.open(.commandPalette)
     }
 }
 
@@ -359,7 +359,7 @@ struct CheatSheetCommand: AppCommand {
     func isEnabled(in context: CommandContext) -> Bool { true }
 
     func run(in context: CommandContext) async {
-        context.focus.showCheatSheet = true
+        OverlayManager.shared.open(.cheatSheet)
     }
 }
 

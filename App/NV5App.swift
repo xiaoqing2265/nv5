@@ -27,6 +27,7 @@ struct NV5App: App {
                 .environment(coordinator)
                 .environment(coordinator.store)
                 .environment(focusCoordinator)
+                .environment(OverlayManager.shared)
                 .frame(minWidth: 800, minHeight: 500)
                 .onAppear { coordinator.bootstrap(focusCoordinator: focusCoordinator) }
                 .onOpenURL { url in
@@ -60,7 +61,7 @@ struct NV5App: App {
                 }
             }
             CommandMenu("命令") {
-                Button { focusCoordinator.showPalette = true } label: {
+                Button { OverlayManager.shared.open(.commandPalette) } label: {
                     MenuShortcutLabel(text: "打开命令面板", shortcutName: .appCommandPalette)
                 }
             }

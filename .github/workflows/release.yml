@@ -82,41 +82,6 @@ jobs:
             echo "Signature: $SIG"
           fi
 
-      - name: Update appcast.xml
-        env:
-          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-        run: |
-          if [ -z "$SPARKLE_PRIVATE_KEY" ]; then
-            echo "WARNING: SPARKLE_PRIVATE_KEY not set, skipping appcast update"
-          else
-            echo "$SPARKLE_PRIVATE_KEY" > /tmp/sparkle_key
-            ${{ steps.sparkle.outputs.bin_dir }}/generate_appcast \
-              --ed-key-file /tmp/sparkle_key \
-              --download-url-prefix "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/" \
-              dist/
-            rm /tmp/sparkle_key
-
-            # Copy generated appcast to repo root
-            if [ -f "dist/appcast.xml" ]; then
-              cp dist/appcast.xml ./appcast.xml
-
-              # Commit and push appcast update
-              git config user.name "github-actions[bot]"
-              git config user.email "github-actions[bot]@users.noreply.github.com"
-
-              # Ensure we're on main branch and have latest changes
-              git fetch origin main
-              git checkout main
-              git pull origin main
-
-              git add appcast.xml
-              git commit -m "chore: update appcast for ${{ github.ref_name }}" || echo "No appcast changes"
-              git push origin main || echo "Failed to push appcast update"
-            else
-              echo "WARNING: appcast.xml not generated"
-            fi
-          fi
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:

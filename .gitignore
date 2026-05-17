@@ -8,6 +8,7 @@ NV5.xcodeproj/
 *.xcworkspace/
 .gitnexus
 build_output/
+build/
 *.log
 .claude/
 

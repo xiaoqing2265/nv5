@@ -317,7 +317,11 @@ struct NoteListColumn: View {
             if coordinator.selectedNoteID == nil {
                 coordinator.selectedNoteID = notes.first?.id
             }
-            focusCoordinator.focus(.noteList)
+            // 将焦点移动到编辑区，而不是笔记列表
+            Task { @MainActor in
+                await Task.yield()
+                focusCoordinator.focus(.editor)
+            }
         }
     }
 

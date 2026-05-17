@@ -10,5 +10,12 @@ NV5.xcodeproj/
 build_output/
 *.log
 .claude/
-AGENTS.md
-CLAUDE.md
+
+# 除 README/CHANGELOG/docs 外，所有 .md 文件不追踪
+*.md
+!/README.md
+!/CHANGELOG.md
+!/docs/*.md
+
+# 本地过程文档
+dev-notes/

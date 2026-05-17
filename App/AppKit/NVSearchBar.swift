@@ -9,6 +9,7 @@ struct NVSearchBar: NSViewRepresentable {
     var onArrowDown: () -> Void
     var onArrowUp: () -> Void
     var onEscape: () -> Void
+    var onEscapeEmpty: () -> Void
     var focusCoordinator: FocusCoordinator
 
     func makeNSView(context: Context) -> NSSearchField {
@@ -82,7 +83,7 @@ struct NVSearchBar: NSViewRepresentable {
                     parent.text = ""
                     escapeCount = 1
                 } else if escapeCount >= 1 {
-                    parent.onEscape()
+                    parent.onEscapeEmpty()
                     escapeCount = 0
                 } else {
                     parent.onEscape()

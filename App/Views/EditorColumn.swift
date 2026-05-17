@@ -28,7 +28,9 @@ struct EditorColumn: View {
                             focusCoordinator.focus(.editor)
                         }
                     }
-                    .focusRing()
+                    .focusRing(active: focusCoordinator.current == .editor)
+                    .accessibilityLabel("编辑器")
+                    .accessibilityElement(children: .contain)
             } else {
                 EmptyStateView(
                     title: "选择或创建笔记",

@@ -1,19 +1,19 @@
 import SwiftUI
 
 struct FocusRingModifier: ViewModifier {
-    @Environment(FocusCoordinator.self) private var focusCoordinator
+    let isActive: Bool
 
     func body(content: Content) -> some View {
         content
-            .onKeyPress(.escape) {
-                focusCoordinator.escapeToSearch()
-                return .handled
-            }
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.accentColor, lineWidth: isActive ? 2 : 0)
+            )
     }
 }
 
 extension View {
-    func focusRing() -> some View {
-        modifier(FocusRingModifier())
+    func focusRing(active: Bool = true) -> some View {
+        modifier(FocusRingModifier(isActive: active))
     }
 }

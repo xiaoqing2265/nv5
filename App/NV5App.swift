@@ -107,6 +107,7 @@ public final class AppCoordinator {
         }
     }
     var selectedNoteIDs: Set<UUID> = []
+    var anchorNoteID: UUID?
     var previousNoteID: UUID?
     var multiSelectionMode: Bool = false
     var recentlyCreatedNoteID: UUID?
@@ -207,6 +208,18 @@ public final class AppCoordinator {
         }
         KeyboardShortcuts.onKeyUp(for: .appPreferencesShortcuts) {
             Task { @MainActor in await ShortcutsPreferencesCommand().run(in: ctx) }
+        }
+        KeyboardShortcuts.onKeyUp(for: .helpCheatSheet) {
+            Task { @MainActor in await CheatSheetCommand().run(in: ctx) }
+        }
+        KeyboardShortcuts.onKeyUp(for: .helpFeedback) {
+            Task { @MainActor in await FeedbackCommand().run(in: ctx) }
+        }
+        KeyboardShortcuts.onKeyUp(for: .helpExportCrashLog) {
+            Task { @MainActor in await ExportCrashLogCommand().run(in: ctx) }
+        }
+        KeyboardShortcuts.onKeyUp(for: .navFocusLabels) {
+            Task { @MainActor in await FocusLabelsCommand().run(in: ctx) }
         }
     }
 
@@ -463,5 +476,24 @@ public final class AppCoordinator {
         if let noteID = navigationHistory.goForward() {
             selectedNoteID = noteID
         }
+    }
+    
+    func extendSelection(to noteID: UUID, allNotes: [Note]) {
+        guard let anchor = anchorNoteID,
+              let anchorIdx = allNotes.firstIndex(where: { $0.id == anchor }),
+              let targetIdx = allNotes.firstIndex(where: { $0.id == noteID }) else {
+            selectedNoteIDs = [noteID]
+            anchorNoteID = noteID
+            selectedNoteID = noteID
+            return
+        }
+        let range = anchorIdx <= targetIdx ? anchorIdx...targetIdx : targetIdx...anchorIdx
+        selectedNoteIDs = Set(allNotes[range].map { $0.id })
+        selectedNoteID = noteID
+    }
+    
+    func selectAllNotes(in notes: [Note]) {
+        selectedNoteIDs = Set(notes.map { $0.id })
+        anchorNoteID = notes.first?.id
     }
 }

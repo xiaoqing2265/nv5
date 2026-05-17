@@ -314,6 +314,71 @@ struct ShortcutsPreferencesCommand: AppCommand {
     }
 }
 
+// MARK: - Help Commands
+
+struct FeedbackCommand: AppCommand {
+    let id = "help.feedback"
+    let title = "发送反馈"
+    let subtitle: String? = "在 GitHub 提交反馈或建议"
+    let keywords = ["feedback", "反馈", "issue"]
+    let category: CommandCategory = .help
+    let symbol = "bubble.left"
+
+    func isEnabled(in context: CommandContext) -> Bool { true }
+
+    func run(in context: CommandContext) async {
+        let url = URL(string: "https://github.com/xiaoqing2265/nv5/issues/new?template=feedback.md")!
+        NSWorkspace.shared.open(url)
+    }
+}
+
+struct ExportCrashLogCommand: AppCommand {
+    let id = "help.exportCrashLog"
+    let title = "导出崩溃日志"
+    let subtitle: String? = "在 Finder 中打开崩溃日志目录"
+    let keywords = ["crash", "崩溃", "log"]
+    let category: CommandCategory = .help
+    let symbol = "doc.text.magnifyingglass"
+
+    func isEnabled(in context: CommandContext) -> Bool { true }
+
+    func run(in context: CommandContext) async {
+        let logsDir = CrashReporter.logsDirectory
+        NSWorkspace.shared.activateFileViewerSelecting([logsDir])
+    }
+}
+
+struct CheatSheetCommand: AppCommand {
+    let id = "help.cheatSheet"
+    let title = "快捷键速查表"
+    let subtitle: String? = "显示所有快捷键的完整列表"
+    let keywords = ["cheat sheet", "快捷键", "列表"]
+    let category: CommandCategory = .help
+    let symbol = "questionmark.circle"
+
+    func isEnabled(in context: CommandContext) -> Bool { true }
+
+    func run(in context: CommandContext) async {
+        context.focus.showCheatSheet = true
+    }
+}
+
+struct FocusLabelsCommand: AppCommand {
+    let id = "navigation.focus.labels"
+    let title = "聚焦标签视图"
+    let subtitle: String? = "跳转到侧栏的标签节点"
+    let keywords = ["labels", "标签", "focus"]
+    let category: CommandCategory = .navigation
+    let symbol = "tag"
+
+    func isEnabled(in context: CommandContext) -> Bool { true }
+
+    func run(in context: CommandContext) async {
+        context.focus.focus(.sidebar)
+        context.focus.sidebarVisible = true
+    }
+}
+
 // MARK: - Registration
 
 enum BuiltinCommands {
@@ -339,5 +404,9 @@ enum BuiltinCommands {
         ToggleFullScreenEditorCommand(),
         CommandPaletteCommand(),
         ShortcutsPreferencesCommand(),
+        FeedbackCommand(),
+        ExportCrashLogCommand(),
+        CheatSheetCommand(),
+        FocusLabelsCommand(),
     ]
 }

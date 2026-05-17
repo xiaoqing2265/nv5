@@ -38,6 +38,8 @@ struct LabelSidebar: View {
         }
         .listStyle(.sidebar)
         .focused($sidebarFocused)
+        .accessibilityLabel("侧栏")
+        .accessibilityElement(children: .contain)
         .onChange(of: focusCoordinator.current) { _, new in
             sidebarFocused = (new == .sidebar)
         }

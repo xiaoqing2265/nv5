@@ -64,6 +64,19 @@ struct TagEditor: View {
                         .textFieldStyle(.roundedBorder)
                         .focused($inputFocused)
                         .onSubmit { addLabel() }
+                        .onKeyPress(.delete) {
+                            if newLabel.isEmpty, let note = currentNote, !note.labels.isEmpty {
+                                if let last = note.labels.sorted().last {
+                                    Task {
+                                        var updated = note
+                                        updated.labels.remove(last)
+                                        try? await store.upsert(updated)
+                                    }
+                                }
+                                return .handled
+                            }
+                            return .ignored
+                        }
                     Button("添加") {
                         addLabel()
                     }

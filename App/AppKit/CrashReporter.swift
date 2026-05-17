@@ -1,6 +1,11 @@
 import Foundation
 
 enum CrashReporter {
+    static var logsDirectory: URL {
+        FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Logs/NV5", isDirectory: true)
+    }
+    
     static func install() {
         NSSetUncaughtExceptionHandler { exception in
             let logDir = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]

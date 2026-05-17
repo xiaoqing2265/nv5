@@ -9,6 +9,8 @@ struct NoteListColumn: View {
     @Environment(FocusCoordinator.self) private var focusCoordinator
     let selectedItem: SidebarItem
     @FocusState private var listFocused: Bool
+    @State private var cmdACancellable: Any?
+    @State private var previewNote: Note?
 
     private var filteredNotes: [Note] {
         if selectedItem == .archived {
@@ -40,12 +42,19 @@ struct NoteListColumn: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            searchBar
-            Divider()
-            noteList
-            if coordinator.multiSelectionMode {
-                multiSelectBar
+        ZStack {
+            VStack(spacing: 0) {
+                searchBar
+                Divider()
+                noteList
+                if coordinator.multiSelectionMode {
+                    multiSelectBar
+                }
+            }
+            if let note = previewNote {
+                NotePreviewOverlay(note: note) {
+                    previewNote = nil
+                }
             }
         }
     }
@@ -61,55 +70,118 @@ struct NoteListColumn: View {
             onArrowDown: { searchBarArrowDown() },
             onArrowUp: { searchBarArrowUp() },
             onEscape: { focusCoordinator.escapeToSearch() },
+            onEscapeEmpty: { focusCoordinator.escapeToList() },
             focusCoordinator: focusCoordinator
         )
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .focusRing()
+        .focusRing(active: focusCoordinator.current == .searchField)
+        .accessibilityLabel("搜索栏")
     }
 
     private var noteList: some View {
         ScrollViewReader { proxy in
-            listView
-                .listStyle(.inset)
-                .focused($listFocused)
-                .onKeyPress(.return) {
-                    guard listFocused, coordinator.selectedNoteID != nil else { return .ignored }
-                    focusCoordinator.returnInList()
-                    return .handled
-                }
-                .onKeyPress(.home, phases: .down) { _ in
-                    guard listFocused, !filteredNotes.isEmpty else { return .ignored }
-                    coordinator.selectedNoteID = filteredNotes.first?.id
-                    return .handled
-                }
-                .onKeyPress(.end, phases: .down) { _ in
-                    guard listFocused, !filteredNotes.isEmpty else { return .ignored }
-                    coordinator.selectedNoteID = filteredNotes.last?.id
-                    return .handled
-                }
-                .onKeyPress(.pageUp, phases: .down) { _ in
-                    guard listFocused, !filteredNotes.isEmpty else { return .ignored }
-                    pageMove(by: -10)
-                    return .handled
-                }
-                .onKeyPress(.pageDown, phases: .down) { _ in
-                    guard listFocused, !filteredNotes.isEmpty else { return .ignored }
-                    pageMove(by: 10)
-                    return .handled
-                }
-                .onChange(of: focusCoordinator.current) { _, new in
-                    listFocused = (new == .noteList)
-                }
-                .onChange(of: listFocused) { _, new in
-                    if new && focusCoordinator.current != .noteList {
-                        focusCoordinator.focus(.noteList)
+            listWithHandlers
+                .onAppear {
+                    cmdACancellable = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                        guard listFocused,
+                              event.modifierFlags.contains(.command),
+                              event.charactersIgnoringModifiers == "a" else { return event }
+                        coordinator.selectAllNotes(in: filteredNotes)
+                        return nil
                     }
+                }
+                .onDisappear {
+                    if let token = cmdACancellable as? NSObject {
+                        NSEvent.removeMonitor(token)
+                    }
+                    cmdACancellable = nil
                 }
                 .onChange(of: filteredNotes) { _, newNotes in
                     handleNotesChange(newNotes, proxy: proxy)
                 }
         }
+    }
+
+    private var listWithHandlers: some View {
+        listView
+            .listStyle(.inset)
+            .focused($listFocused)
+            .accessibilityLabel("笔记列表")
+            .accessibilityElement(children: .contain)
+            .onKeyPress(.return, action: onReturn)
+            .onKeyPress(.home, phases: .down, action: onHome)
+            .onKeyPress(.end, phases: .down, action: onEnd)
+            .onKeyPress(.pageUp, phases: .down, action: onPageUp)
+            .onKeyPress(.pageDown, phases: .down, action: onPageDown)
+            .onKeyPress(.upArrow, phases: .down, action: onUpArrow)
+            .onKeyPress(.downArrow, phases: .down, action: onDownArrow)
+            .onKeyPress(.space, phases: .down, action: onSpace)
+            .onChange(of: focusCoordinator.current) { _, new in
+                listFocused = (new == .noteList)
+            }
+            .onChange(of: listFocused) { _, new in
+                if new && focusCoordinator.current != .noteList {
+                    focusCoordinator.focus(.noteList)
+                }
+            }
+    }
+
+    private func onReturn() -> KeyPress.Result {
+        guard listFocused, coordinator.selectedNoteID != nil else { return .ignored }
+        focusCoordinator.returnInList()
+        return .handled
+    }
+
+    private func onHome(_ event: KeyPress) -> KeyPress.Result {
+        guard listFocused, !filteredNotes.isEmpty else { return .ignored }
+        coordinator.selectedNoteID = filteredNotes.first?.id
+        return .handled
+    }
+
+    private func onEnd(_ event: KeyPress) -> KeyPress.Result {
+        guard listFocused, !filteredNotes.isEmpty else { return .ignored }
+        coordinator.selectedNoteID = filteredNotes.last?.id
+        return .handled
+    }
+
+    private func onPageUp(_ event: KeyPress) -> KeyPress.Result {
+        guard listFocused, !filteredNotes.isEmpty else { return .ignored }
+        pageMove(by: -20)
+        return .handled
+    }
+
+    private func onPageDown(_ event: KeyPress) -> KeyPress.Result {
+        guard listFocused, !filteredNotes.isEmpty else { return .ignored }
+        pageMove(by: 20)
+        return .handled
+    }
+
+    private func onUpArrow(_ event: KeyPress) -> KeyPress.Result {
+        guard listFocused, !filteredNotes.isEmpty else { return .ignored }
+        if event.modifiers.contains(.shift) {
+            shiftSelect(by: -1)
+            return .handled
+        }
+        return .ignored
+    }
+
+    private func onDownArrow(_ event: KeyPress) -> KeyPress.Result {
+        guard listFocused, !filteredNotes.isEmpty else { return .ignored }
+        if event.modifiers.contains(.shift) {
+            shiftSelect(by: 1)
+            return .handled
+        }
+        return .ignored
+    }
+
+    private func onSpace(_ event: KeyPress) -> KeyPress.Result {
+        guard listFocused, let id = coordinator.selectedNoteID else { return .ignored }
+        if let note = store.notes.first(where: { $0.id == id }) ?? store.archivedNotes.first(where: { $0.id == id }) {
+            previewNote = note
+            return .handled
+        }
+        return .ignored
     }
 
     @ViewBuilder
@@ -191,6 +263,26 @@ struct NoteListColumn: View {
         } else {
             coordinator.selectedNoteID = delta > 0 ? filteredNotes.first?.id : filteredNotes.last?.id
         }
+    }
+
+    private func shiftSelect(by delta: Int) {
+        guard let current = coordinator.selectedNoteID,
+              let currentIdx = filteredNotes.firstIndex(where: { $0.id == current }) else {
+            if let first = filteredNotes.first {
+                coordinator.selectedNoteID = first.id
+                coordinator.anchorNoteID = first.id
+                coordinator.selectedNoteIDs = [first.id]
+            }
+            return
+        }
+        let targetIdx = min(filteredNotes.count - 1, max(0, currentIdx + delta))
+        let targetNote = filteredNotes[targetIdx]
+        coordinator.selectedNoteID = targetNote.id
+        if coordinator.anchorNoteID == nil {
+            coordinator.anchorNoteID = current
+            coordinator.selectedNoteIDs = [current]
+        }
+        coordinator.extendSelection(to: targetNote.id, allNotes: filteredNotes)
     }
 
     private func handleNotesChange(_ newNotes: [Note], proxy: ScrollViewProxy) {
@@ -275,5 +367,66 @@ struct NoteRow: View {
             }
         }
         .padding(.vertical, NVTheme.Metrics.listRowVerticalPadding)
+    }
+}
+
+struct NotePreviewOverlay: View {
+    let note: Note
+    let onClose: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.3)
+                .ignoresSafeArea()
+                .onTapGesture { onClose() }
+
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text(note.displayTitle)
+                        .font(.headline)
+                    Spacer()
+                    Button {
+                        onClose()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Divider()
+
+                ScrollView {
+                    Text(note.body.isEmpty ? "无正文" : note.body)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                }
+                .frame(maxHeight: 300)
+
+                HStack {
+                    Text("修改于 \(note.modifiedAt.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                    Spacer()
+                    if !note.labels.isEmpty {
+                        FlowLayout {
+                            ForEach(note.labels.sorted(), id: \.self) { label in
+                                LabelChip(label)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding()
+            .frame(width: 420)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .shadow(color: .black.opacity(0.3), radius: 16, y: 8)
+        }
+        .onKeyPress(.escape) {
+            onClose()
+            return .handled
+        }
     }
 }

@@ -5,7 +5,7 @@ extension KeyboardShortcuts.Name {
     static let noteNewFromSearch = Self("note.new.fromSearch", default: .init(.n, modifiers: [.command, .shift]))
     static let noteDelete = Self("note.delete", default: .init(.delete, modifiers: [.command]))
     static let noteArchiveToggle = Self("note.archive.toggle", default: .init(.a, modifiers: [.command, .shift]))
-    static let noteLabelAdd = Self("note.label.add", default: .init(.l, modifiers: [.command, .shift]))
+    static let noteLabelAdd = Self("note.label.add", default: .init(.t, modifiers: [.command, .shift]))
 
     static let noteCopyMarkdown = Self("note.copy.markdown", default: .init(.c, modifiers: [.command, .shift]))
     static let noteCopyRichText = Self("note.copy.richText", default: .init(.r, modifiers: [.command, .shift]))
@@ -26,4 +26,10 @@ extension KeyboardShortcuts.Name {
     static let appPreferencesShortcuts = Self("app.preferences.shortcuts")
     
     static let viewToggleFullScreenEditor = Self("view.toggleFullScreenEditor", default: .init(.f, modifiers: [.command, .control]))
+    
+    static let helpCheatSheet = Self("help.cheatSheet", default: .init(.slash, modifiers: [.command]))
+    static let helpFeedback = Self("help.feedback")
+    static let helpExportCrashLog = Self("help.exportCrashLog")
+    
+    static let navFocusLabels = Self("navigation.focus.labels", default: .init(.g, modifiers: [.control]))
 }

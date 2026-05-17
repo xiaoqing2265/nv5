@@ -16,8 +16,78 @@ struct MainView: View {
     @State private var selectedItem: SidebarItem = .all
     @AppStorage("isWindowPinned") private var isWindowPinned: Bool = false
     @State private var showTagEditor: Bool = false
+    @State private var showKeyboardGuide: Bool = false
 
     var body: some View {
+        contentView
+            .navigationSplitViewStyle(.balanced)
+            .toolbar { toolbarContent }
+            .overlay(overlayContent)
+        .sheet(isPresented: $showKeyboardGuide, onDismiss: {
+            UserDefaults.standard.set(true, forKey: "hasShownKeyboardGuide")
+        }) {
+            KeyboardGuideView()
+        }
+            .onAppear {
+                registerCommands()
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 200_000_000)
+                    focusCoordinator.escapeToSearch()
+                }
+                if !UserDefaults.standard.bool(forKey: "hasShownKeyboardGuide") {
+                    showKeyboardGuide = true
+                }
+                if isWindowPinned {
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 100_000_000)
+                        updateWindowLevel(isWindowPinned)
+                    }
+                }
+            }
+            .onChange(of: isWindowPinned) { _, newValue in
+                updateWindowLevel(newValue)
+            }
+            .onChange(of: focusCoordinator.sidebarVisible) { _, new in
+                withAnimation {
+                    visibility = new ? .all : .doubleColumn
+                }
+            }
+            .onChange(of: focusCoordinator.showPalette) { _, show in
+                if show {
+                    PaletteWindowManager.shared.show(coordinator: coordinator, focusCoordinator: focusCoordinator)
+                } else {
+                    PaletteWindowManager.shared.hide()
+                }
+            }
+            .onChange(of: coordinator.isFullScreenEditor) { _, newValue in
+                withAnimation {
+                    visibility = newValue ? .detailOnly : .all
+                }
+            }
+            .onChange(of: focusCoordinator.isOverlayActive) { _, isActive in
+                withAnimation {
+                    showTagEditor = isActive
+                }
+            }
+            .onChange(of: focusCoordinator.showCheatSheet) { _, isActive in
+                if isActive {
+                    focusCoordinator.isOverlayActive = true
+                } else {
+                    focusCoordinator.isOverlayActive = false
+                }
+            }
+            .onKeyPress(.tab, phases: .down) { event in
+                guard !focusCoordinator.isOverlayActive && !focusCoordinator.showPalette else { return .ignored }
+                if event.modifiers.contains(.shift) {
+                    focusCoordinator.focusPrevious()
+                } else {
+                    focusCoordinator.focusNext()
+                }
+                return .handled
+            }
+    }
+
+    private var contentView: some View {
         NavigationSplitView(columnVisibility: $visibility) {
             LabelSidebar(selectedItem: $selectedItem)
                 .navigationSplitViewColumnWidth(min: 140, ideal: 180, max: 240)
@@ -27,60 +97,17 @@ struct MainView: View {
         } detail: {
             EditorColumn()
         }
-        .navigationSplitViewStyle(.balanced)
-        .toolbar { toolbarContent }
-        .overlay {
-            if showTagEditor {
-                TagEditor()
-                    .transition(.scale.combined(with: .opacity))
-            }
+    }
+
+    @ViewBuilder
+    private var overlayContent: some View {
+        if showTagEditor {
+            TagEditor()
+                .transition(.scale.combined(with: .opacity))
         }
-        .onAppear {
-            registerCommands()
-            Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 200_000_000)
-                focusCoordinator.escapeToSearch()
-            }
-            if isWindowPinned {
-                Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 100_000_000)
-                    updateWindowLevel(isWindowPinned)
-                }
-            }
-        }
-        .onChange(of: isWindowPinned) { _, newValue in
-            updateWindowLevel(newValue)
-        }
-        .onChange(of: focusCoordinator.sidebarVisible) { _, new in
-            withAnimation {
-                visibility = new ? .all : .doubleColumn
-            }
-        }
-        .onChange(of: focusCoordinator.showPalette) { _, show in
-            if show {
-                PaletteWindowManager.shared.show(coordinator: coordinator, focusCoordinator: focusCoordinator)
-            } else {
-                PaletteWindowManager.shared.hide()
-            }
-        }
-        .onChange(of: coordinator.isFullScreenEditor) { _, newValue in
-            withAnimation {
-                visibility = newValue ? .detailOnly : .all
-            }
-        }
-        .onChange(of: focusCoordinator.isOverlayActive) { _, isActive in
-            withAnimation {
-                showTagEditor = isActive
-            }
-        }
-        .onKeyPress(.tab, phases: .down) { event in
-            guard !focusCoordinator.isOverlayActive && !focusCoordinator.showPalette else { return .ignored }
-            if event.modifiers.contains(.shift) {
-                focusCoordinator.focusPrevious()
-            } else {
-                focusCoordinator.focusNext()
-            }
-            return .handled
+        if focusCoordinator.showCheatSheet {
+            CheatSheetView()
+                .transition(.scale.combined(with: .opacity))
         }
     }
 
@@ -107,6 +134,7 @@ struct MainView: View {
             }
             .foregroundStyle(coordinator.multiSelectionMode ? Color.accentColor : .secondary)
             .help("批量选择笔记")
+            .accessibilityLabel("批量选择")
         }
         ToolbarItem(placement: .primaryAction) {
             Button {
@@ -114,6 +142,7 @@ struct MainView: View {
             } label: {
                 Label("新建笔记", systemImage: "square.and.pencil")
             }
+            .accessibilityLabel("新建笔记")
         }
         ToolbarItem(placement: .primaryAction) {
             Button {
@@ -122,9 +151,11 @@ struct MainView: View {
                 Label(isWindowPinned ? "取消窗口前置" : "窗口前置", systemImage: isWindowPinned ? "pin.fill" : "pin")
             }
             .foregroundStyle(isWindowPinned ? .orange : .secondary)
+            .accessibilityLabel(isWindowPinned ? "取消窗口前置" : "窗口前置")
         }
         ToolbarItem(placement: .primaryAction) {
             SyncStatusButton()
+                .accessibilityLabel("同步状态")
         }
     }
 }

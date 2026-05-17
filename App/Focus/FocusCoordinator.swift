@@ -10,6 +10,7 @@ public final class FocusCoordinator {
     
     /// 浮层是否激活（命令面板、TagEditor 等）
     public var isOverlayActive: Bool = false
+    public var showCheatSheet: Bool = false
     
     /// 焦点栈，用于模态返回
     private var focusStack: [FocusTarget] = []
@@ -40,6 +41,10 @@ public final class FocusCoordinator {
         DispatchQueue.main.async { [weak self] in
             self?.selectAllSubject.send()
         }
+    }
+
+    public func escapeToList() {
+        current = .noteList
     }
 
     /// §3.5 QA #5: Return in list → focus editor with cursor at end

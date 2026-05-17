@@ -3,11 +3,68 @@
     <channel>
         <title>NV5</title>
         <item>
+            <title>0.9.0-beta1</title>
+            <pubDate>Sun, 17 May 2026 12:46:41 +0000</pubDate>
+            <sparkle:version>35</sparkle:version>
+            <sparkle:shortVersionString>0.9.0-beta1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description>
+                &lt;h2&gt;M6 键盘工作流完善&lt;/h2&gt;
+                &lt;ul&gt;
+                &lt;li&gt;✨ 添加了完整的单元测试（CommandHistoryStore 和 NavigationHistory）&lt;/li&gt;
+                &lt;li&gt;📚 创建了详细的架构和快捷键文档&lt;/li&gt;
+                &lt;li&gt;♿ 实现了 Reduce Motion 和高对比度支持&lt;/li&gt;
+                &lt;li&gt;⌨️ 添加了缺失的快捷键命令（⌥⌘←→、⌘A）&lt;/li&gt;
+                &lt;li&gt;📖 添加了 README 和 CHANGELOG&lt;/li&gt;
+                &lt;/ul&gt;
+            </description>
+            <enclosure url="https://github.com/xiaoqing2265/nv5/releases/download/v0.9.0-beta1/NV5-v0.9.0-beta1.dmg" length="0" type="application/octet-stream" sparkle:edSignature=""/>
+        </item>
+        <item>
+            <title>0.9.0-alpha3</title>
+            <pubDate>Sat, 16 May 2026 16:48:10 +0000</pubDate>
+            <sparkle:version>34</sparkle:version>
+            <sparkle:shortVersionString>0.9.0-alpha3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description>
+                &lt;h2&gt;M6 键盘工作流增强&lt;/h2&gt;
+                &lt;ul&gt;
+                &lt;li&gt;✨ 添加了键盘快捷键引导面板&lt;/li&gt;
+                &lt;li&gt;✨ 添加了快捷键速查表&lt;/li&gt;
+                &lt;li&gt;✨ 添加了帮助命令&lt;/li&gt;
+                &lt;/ul&gt;
+            </description>
+            <enclosure url="https://github.com/xiaoqing2265/nv5/releases/download/v0.9.0-alpha3/NV5-v0.9.0-alpha3.dmg" length="0" type="application/octet-stream" sparkle:edSignature=""/>
+        </item>
+        <item>
+            <title>0.9.0-alpha2</title>
+            <pubDate>Sat, 16 May 2026 16:48:10 +0000</pubDate>
+            <sparkle:version>33</sparkle:version>
+            <sparkle:shortVersionString>0.9.0-alpha2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description>
+                &lt;h2&gt;M6 键盘工作流实现&lt;/h2&gt;
+                &lt;ul&gt;
+                &lt;li&gt;✨ 实现了 M6 键盘工作流的核心功能&lt;/li&gt;
+                &lt;li&gt;✨ 添加了 TagEditor 标签编辑器&lt;/li&gt;
+                &lt;li&gt;✨ 实现了持久化搜索历史&lt;/li&gt;
+                &lt;/ul&gt;
+            </description>
+            <enclosure url="https://github.com/xiaoqing2265/nv5/releases/download/v0.9.0-alpha2/NV5-v0.9.0-alpha2.dmg" length="0" type="application/octet-stream" sparkle:edSignature=""/>
+        </item>
+        <item>
             <title>0.9.0-alpha1</title>
             <pubDate>Sat, 16 May 2026 16:48:10 +0000</pubDate>
             <sparkle:version>32</sparkle:version>
             <sparkle:shortVersionString>0.9.0-alpha1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description>
+                &lt;h2&gt;首个 alpha 版本&lt;/h2&gt;
+                &lt;ul&gt;
+                &lt;li&gt;✨ 实现了 Sparkle 自动更新集成&lt;/li&gt;
+                &lt;li&gt;✨ 改进了应用窗口管理&lt;/li&gt;
+                &lt;/ul&gt;
+            </description>
             <enclosure url="https://github.com/xiaoqing2265/nv5/releases/download/v0.9.0-alpha1/NV5-v0.9.0-alpha1.dmg" length="8591504" type="application/octet-stream" sparkle:edSignature="TBT2+ebcwh1GCvEwy2v/ft2TdXXD1KtIullkk70XMzVeiIZBzl0yx3K/aza1H/jylBlsnsUYGVvgkvOnzUWkAw=="/>
         </item>
     </channel>

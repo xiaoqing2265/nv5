@@ -69,35 +69,47 @@ jobs:
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
-          echo "$SPARKLE_PRIVATE_KEY" > /tmp/sparkle_key
-          SIG=$(${{ steps.sparkle.outputs.bin_dir }}/sign_update \
-            -f /tmp/sparkle_key \
-            "dist/NV5-${{ github.ref_name }}.dmg")
-          rm /tmp/sparkle_key
-          echo "signature=$SIG" >> $GITHUB_OUTPUT
-          echo "Signature: $SIG"
+          if [ -z "$SPARKLE_PRIVATE_KEY" ]; then
+            echo "WARNING: SPARKLE_PRIVATE_KEY not set, skipping signature"
+            echo "signature=UNSIGNED" >> $GITHUB_OUTPUT
+          else
+            echo "$SPARKLE_PRIVATE_KEY" > /tmp/sparkle_key
+            SIG=$(${{ steps.sparkle.outputs.bin_dir }}/sign_update \
+              -f /tmp/sparkle_key \
+              "dist/NV5-${{ github.ref_name }}.dmg")
+            rm /tmp/sparkle_key
+            echo "signature=$SIG" >> $GITHUB_OUTPUT
+            echo "Signature: $SIG"
+          fi
 
       - name: Update appcast.xml
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
-          echo "$SPARKLE_PRIVATE_KEY" > /tmp/sparkle_key
-          ${{ steps.sparkle.outputs.bin_dir }}/generate_appcast \
-            --ed-key-file /tmp/sparkle_key \
-            --download-url-prefix "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/" \
-            dist/
-          rm /tmp/sparkle_key
-          cp dist/appcast.xml ./appcast.xml
+          if [ -z "$SPARKLE_PRIVATE_KEY" ]; then
+            echo "WARNING: SPARKLE_PRIVATE_KEY not set, skipping appcast update"
+          else
+            echo "$SPARKLE_PRIVATE_KEY" > /tmp/sparkle_key
+            ${{ steps.sparkle.outputs.bin_dir }}/generate_appcast \
+              --ed-key-file /tmp/sparkle_key \
+              --download-url-prefix "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/" \
+              dist/
+            rm /tmp/sparkle_key
 
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add appcast.xml
-          git stash
-          git fetch origin main
-          git checkout main
-          git stash pop
-          git commit -m "chore: update appcast for ${{ github.ref_name }}" || echo "No changes"
-          git push origin main
+            # Copy generated appcast to repo root
+            if [ -f "dist/appcast.xml" ]; then
+              cp dist/appcast.xml ./appcast.xml
+
+              # Commit and push appcast update
+              git config user.name "github-actions[bot]"
+              git config user.email "github-actions[bot]@users.noreply.github.com"
+              git add appcast.xml
+              git commit -m "chore: update appcast for ${{ github.ref_name }}" || echo "No appcast changes"
+              git push origin main || echo "Failed to push appcast update"
+            else
+              echo "WARNING: appcast.xml not generated"
+            fi
+          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -105,3 +117,4 @@ jobs:
           files: dist/NV5-${{ github.ref_name }}.dmg
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+

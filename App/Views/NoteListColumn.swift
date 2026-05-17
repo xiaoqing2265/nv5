@@ -41,75 +41,61 @@ struct NoteListColumn: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            NVSearchBar(
-                text: Binding(
-                    get: { coordinator.query },
-                    set: { coordinator.query = $0 }
-                ),
-                isFocused: focusCoordinator.current == .searchField,
-                onSubmit: { searchBarReturn() },
-                onArrowDown: { searchBarArrowDown() },
-                onArrowUp: { searchBarArrowUp() },
-                onEscape: { focusCoordinator.escapeToSearch() },
-                focusCoordinator: focusCoordinator
-            )
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .focusRing()
-
+            searchBar
             Divider()
+            noteList
+            if coordinator.multiSelectionMode {
+                multiSelectBar
+            }
+        }
+    }
 
-            ScrollViewReader { proxy in
-                Group {
-                    if coordinator.multiSelectionMode {
-                        List(selection: Binding(
-                            get: { coordinator.selectedNoteIDs },
-                            set: { coordinator.selectedNoteIDs = $0 }
-                        )) {
-                            ForEach(filteredNotes) { note in
-                                NoteRow(note: note)
-                                    .tag(note.id)
-                            }
-                        }
-                    } else {
-                        List(selection: Binding(
-                            get: { coordinator.selectedNoteID },
-                            set: { coordinator.selectedNoteID = $0 }
-                        )) {
-                            ForEach(filteredNotes) { note in
-                                NoteRow(note: note)
-                                    .tag(Optional(note.id))
-                                    .contextMenu {
-                                        Button(note.archived ? "取消归档" : "归档", systemImage: note.archived ? "tray.and.arrow.up" : "archivebox") {
-                                            coordinator.setArchived(id: note.id, archived: !note.archived)
-                                        }
-                                        Button("分享...", systemImage: "square.and.arrow.up") {
-                                            if let window = NSApp.keyWindow,
-                                               let contentView = window.contentView {
-                                                coordinator.shareCurrentNote(from: contentView)
-                                            }
-                                        }
-                                        Divider()
-                                        Button("删除", systemImage: "trash", role: .destructive) {
-                                            delete(note)
-                                        }
-                                    }
-                            }
-                        }
-                        .onDeleteCommand {
-                            let notes = filteredNotes
-                            if let id = coordinator.selectedNoteID,
-                               let note = notes.first(where: { $0.id == id }) {
-                                delete(note)
-                            }
-                        }
-                    }
-                }
+    private var searchBar: some View {
+        NVSearchBar(
+            text: Binding(
+                get: { coordinator.query },
+                set: { coordinator.query = $0 }
+            ),
+            isFocused: focusCoordinator.current == .searchField,
+            onSubmit: { searchBarReturn() },
+            onArrowDown: { searchBarArrowDown() },
+            onArrowUp: { searchBarArrowUp() },
+            onEscape: { focusCoordinator.escapeToSearch() },
+            focusCoordinator: focusCoordinator
+        )
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .focusRing()
+    }
+
+    private var noteList: some View {
+        ScrollViewReader { proxy in
+            listView
                 .listStyle(.inset)
                 .focused($listFocused)
                 .onKeyPress(.return) {
                     guard listFocused, coordinator.selectedNoteID != nil else { return .ignored }
                     focusCoordinator.returnInList()
+                    return .handled
+                }
+                .onKeyPress(.home, phases: .down) { _ in
+                    guard listFocused, !filteredNotes.isEmpty else { return .ignored }
+                    coordinator.selectedNoteID = filteredNotes.first?.id
+                    return .handled
+                }
+                .onKeyPress(.end, phases: .down) { _ in
+                    guard listFocused, !filteredNotes.isEmpty else { return .ignored }
+                    coordinator.selectedNoteID = filteredNotes.last?.id
+                    return .handled
+                }
+                .onKeyPress(.pageUp, phases: .down) { _ in
+                    guard listFocused, !filteredNotes.isEmpty else { return .ignored }
+                    pageMove(by: -10)
+                    return .handled
+                }
+                .onKeyPress(.pageDown, phases: .down) { _ in
+                    guard listFocused, !filteredNotes.isEmpty else { return .ignored }
+                    pageMove(by: 10)
                     return .handled
                 }
                 .onChange(of: focusCoordinator.current) { _, new in
@@ -121,51 +107,113 @@ struct NoteListColumn: View {
                     }
                 }
                 .onChange(of: filteredNotes) { _, newNotes in
-                    if let createdID = coordinator.recentlyCreatedNoteID {
-                        if newNotes.contains(where: { $0.id == createdID }) {
-                            coordinator.selectedNoteID = createdID
-                            coordinator.recentlyCreatedNoteID = nil
-                            focusCoordinator.focus(.editor)
+                    handleNotesChange(newNotes, proxy: proxy)
+                }
+        }
+    }
 
-                            Task { @MainActor in
-                                try? await Task.sleep(nanoseconds: 50_000_000)
-                                withAnimation {
-                                    proxy.scrollTo(Optional(createdID), anchor: .top)
-                                }
-                            }
-                        }
-                        return
-                    }
-
-                    if let currentID = coordinator.selectedNoteID {
-                        if !newNotes.contains(where: { $0.id == currentID }) {
-                            coordinator.selectedNoteID = newNotes.first?.id
-                        }
-                    } else {
-                        coordinator.selectedNoteID = newNotes.first?.id
-                    }
+    @ViewBuilder
+    private var listView: some View {
+        if coordinator.multiSelectionMode {
+            List(selection: Binding(
+                get: { coordinator.selectedNoteIDs },
+                set: { coordinator.selectedNoteIDs = $0 }
+            )) {
+                ForEach(filteredNotes) { note in
+                    NoteRow(note: note).tag(note.id)
                 }
             }
+        } else {
+            List(selection: Binding(
+                get: { coordinator.selectedNoteID },
+                set: { coordinator.selectedNoteID = $0 }
+            )) {
+                ForEach(filteredNotes) { note in
+                    noteRowWithMenu(note)
+                }
+            }
+            .onDeleteCommand {
+                let notes = filteredNotes
+                if let id = coordinator.selectedNoteID,
+                   let note = notes.first(where: { $0.id == id }) {
+                    delete(note)
+                }
+            }
+        }
+    }
 
-            if coordinator.multiSelectionMode {
+    private func noteRowWithMenu(_ note: Note) -> some View {
+        NoteRow(note: note)
+            .tag(Optional(note.id))
+            .contextMenu {
+                Button(note.archived ? "取消归档" : "归档", systemImage: note.archived ? "tray.and.arrow.up" : "archivebox") {
+                    coordinator.setArchived(id: note.id, archived: !note.archived)
+                }
+                Button("分享...", systemImage: "square.and.arrow.up") {
+                    if let window = NSApp.keyWindow,
+                       let contentView = window.contentView {
+                        coordinator.shareCurrentNote(from: contentView)
+                    }
+                }
                 Divider()
-                HStack {
-                    Text("已选择 \(coordinator.selectedNoteIDs.count) 项")
-                        .font(.caption)
-                    Spacer()
-                    Button("取消") {
-                        coordinator.multiSelectionMode = false
-                        coordinator.selectedNoteIDs.removeAll()
-                    }
-                    Button("导出") {
-                        coordinator.exportCurrentNote()
-                    }
-                    .disabled(coordinator.selectedNoteIDs.isEmpty)
+                Button("删除", systemImage: "trash", role: .destructive) {
+                    delete(note)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color(NSColor.controlBackgroundColor))
             }
+    }
+
+    @ViewBuilder
+    private var multiSelectBar: some View {
+        Divider()
+        HStack {
+            Text("已选择 \(coordinator.selectedNoteIDs.count) 项")
+                .font(.caption)
+            Spacer()
+            Button("取消") {
+                coordinator.multiSelectionMode = false
+                coordinator.selectedNoteIDs.removeAll()
+            }
+            Button("导出") {
+                coordinator.exportCurrentNote()
+            }
+            .disabled(coordinator.selectedNoteIDs.isEmpty)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color(NSColor.controlBackgroundColor))
+    }
+
+    private func pageMove(by delta: Int) {
+        if let current = coordinator.selectedNoteID,
+           let idx = filteredNotes.firstIndex(where: { $0.id == current }) {
+            let target = min(filteredNotes.count - 1, max(0, idx + delta))
+            coordinator.selectedNoteID = filteredNotes[target].id
+        } else {
+            coordinator.selectedNoteID = delta > 0 ? filteredNotes.first?.id : filteredNotes.last?.id
+        }
+    }
+
+    private func handleNotesChange(_ newNotes: [Note], proxy: ScrollViewProxy) {
+        if let createdID = coordinator.recentlyCreatedNoteID {
+            if newNotes.contains(where: { $0.id == createdID }) {
+                coordinator.selectedNoteID = createdID
+                coordinator.recentlyCreatedNoteID = nil
+                focusCoordinator.focus(.editor)
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 50_000_000)
+                    withAnimation {
+                        proxy.scrollTo(Optional(createdID), anchor: .top)
+                    }
+                }
+            }
+            return
+        }
+        if let currentID = coordinator.selectedNoteID {
+            if !newNotes.contains(where: { $0.id == currentID }) {
+                coordinator.selectedNoteID = newNotes.first?.id
+            }
+        } else {
+            coordinator.selectedNoteID = newNotes.first?.id
         }
     }
 

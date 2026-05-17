@@ -81,8 +81,7 @@ struct AddLabelCommand: AppCommand {
     func isEnabled(in context: CommandContext) -> Bool { context.coordinator.selectedNoteID != nil }
 
     func run(in context: CommandContext) async {
-        // Programmatic label addition handled via UI - focus editor for manual entry
-        context.focus.focus(.editor)
+        context.focus.isOverlayActive = true
     }
 }
 

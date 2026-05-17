@@ -15,6 +15,7 @@ struct MainView: View {
     @State private var visibility: NavigationSplitViewVisibility = .all
     @State private var selectedItem: SidebarItem = .all
     @AppStorage("isWindowPinned") private var isWindowPinned: Bool = false
+    @State private var showTagEditor: Bool = false
 
     var body: some View {
         NavigationSplitView(columnVisibility: $visibility) {
@@ -28,6 +29,12 @@ struct MainView: View {
         }
         .navigationSplitViewStyle(.balanced)
         .toolbar { toolbarContent }
+        .overlay {
+            if showTagEditor {
+                TagEditor()
+                    .transition(.scale.combined(with: .opacity))
+            }
+        }
         .onAppear {
             registerCommands()
             Task { @MainActor in
@@ -59,6 +66,11 @@ struct MainView: View {
         .onChange(of: coordinator.isFullScreenEditor) { _, newValue in
             withAnimation {
                 visibility = newValue ? .detailOnly : .all
+            }
+        }
+        .onChange(of: focusCoordinator.isOverlayActive) { _, isActive in
+            withAnimation {
+                showTagEditor = isActive
             }
         }
         .onKeyPress(.tab, phases: .down) { event in

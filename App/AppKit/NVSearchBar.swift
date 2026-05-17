@@ -47,29 +47,72 @@ struct NVSearchBar: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
+    @MainActor
     final class Coordinator: NSObject, NSSearchFieldDelegate {
         var parent: NVSearchBar
         var lastIsFocused = false
         var selectAllCancellable: AnyCancellable?
+        private var escapeCount = 0
+        private var historyIndex = -1
+        private let historyStore = SearchHistoryStore.shared
+
         init(_ parent: NVSearchBar) { self.parent = parent }
 
         func controlTextDidChange(_ obj: Notification) {
             guard let field = obj.object as? NSSearchField else { return }
             parent.text = field.stringValue
+            escapeCount = 0
+        }
+
+        func controlTextDidBeginEditing(_ obj: Notification) {
+            escapeCount = 0
+            historyIndex = -1
         }
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
             if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+                if !parent.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    historyStore.record(parent.text)
+                }
+                historyIndex = -1
                 parent.onSubmit()
                 return true
-            } else if commandSelector == #selector(NSResponder.moveDown(_:)) {
-                parent.onArrowDown()
+            } else if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+                if !parent.text.isEmpty {
+                    parent.text = ""
+                    escapeCount = 1
+                } else if escapeCount >= 1 {
+                    parent.onEscape()
+                    escapeCount = 0
+                } else {
+                    parent.onEscape()
+                    escapeCount = 0
+                }
                 return true
             } else if commandSelector == #selector(NSResponder.moveUp(_:)) {
+                if NSApp.currentEvent?.modifierFlags.contains(.command) == true {
+                    let history = historyStore.history()
+                    guard !history.isEmpty else { return false }
+                    historyIndex = min(historyIndex + 1, history.count - 1)
+                    parent.text = history[safe: historyIndex] ?? ""
+                    return true
+                }
                 parent.onArrowUp()
                 return true
-            } else if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
-                parent.onEscape()
+            } else if commandSelector == #selector(NSResponder.moveDown(_:)) {
+                if NSApp.currentEvent?.modifierFlags.contains(.command) == true {
+                    let history = historyStore.history()
+                    guard !history.isEmpty else { return false }
+                    if historyIndex > 0 {
+                        historyIndex -= 1
+                        parent.text = history[safe: historyIndex] ?? ""
+                    } else if historyIndex == 0 {
+                        historyIndex = -1
+                        parent.text = ""
+                    }
+                    return true
+                }
+                parent.onArrowDown()
                 return true
             }
             return false

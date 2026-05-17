@@ -66,7 +66,8 @@ struct MainView: View {
             }
             .onChange(of: focusCoordinator.isOverlayActive) { _, isActive in
                 withAnimation {
-                    showTagEditor = isActive
+                    // 当命令面板显示时，不显示 TagEditor
+                    showTagEditor = isActive && !focusCoordinator.showPalette
                 }
             }
             .onChange(of: focusCoordinator.showCheatSheet) { _, isActive in
@@ -74,6 +75,18 @@ struct MainView: View {
                     focusCoordinator.isOverlayActive = true
                 } else {
                     focusCoordinator.isOverlayActive = false
+                }
+            }
+            .onChange(of: focusCoordinator.showPalette) { _, showPalette in
+                // 当命令面板显示时，隐藏 TagEditor
+                if showPalette && focusCoordinator.isOverlayActive {
+                    withAnimation {
+                        showTagEditor = false
+                    }
+                } else if !showPalette && focusCoordinator.isOverlayActive {
+                    withAnimation {
+                        showTagEditor = true
+                    }
                 }
             }
             .onKeyPress(.tab, phases: .down) { event in

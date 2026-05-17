@@ -7,7 +7,7 @@ struct CommandPaletteView: View {
     @State private var query = ""
     @State private var selectedIndex = 0
     @State private var historyIndex = -1
-    
+
     private let registry = CommandRegistry.shared
     private let historyStore = CommandHistoryStore.shared
     

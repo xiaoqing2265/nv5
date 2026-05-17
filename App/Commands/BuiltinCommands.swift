@@ -379,6 +379,59 @@ struct FocusLabelsCommand: AppCommand {
     }
 }
 
+struct PreviousNoteCommand: AppCommand {
+    let id = "navigation.previousNote"
+    let title = "上一篇笔记"
+    let subtitle: String? = "在编辑器中切换到上一篇笔记"
+    let keywords = ["previous", "上一篇", "prev"]
+    let category: CommandCategory = .navigation
+    let symbol = "arrow.left"
+
+    func isEnabled(in context: CommandContext) -> Bool { context.coordinator.selectedNoteID != nil }
+
+    func run(in context: CommandContext) async {
+        guard let currentID = context.coordinator.selectedNoteID else { return }
+        let notes = context.coordinator.store.notes
+        guard let currentIndex = notes.firstIndex(where: { $0.id == currentID }) else { return }
+        let previousIndex = currentIndex > 0 ? currentIndex - 1 : notes.count - 1
+        context.coordinator.selectedNoteID = notes[previousIndex].id
+    }
+}
+
+struct NextNoteCommand: AppCommand {
+    let id = "navigation.nextNote"
+    let title = "下一篇笔记"
+    let subtitle: String? = "在编辑器中切换到下一篇笔记"
+    let keywords = ["next", "下一篇"]
+    let category: CommandCategory = .navigation
+    let symbol = "arrow.right"
+
+    func isEnabled(in context: CommandContext) -> Bool { context.coordinator.selectedNoteID != nil }
+
+    func run(in context: CommandContext) async {
+        guard let currentID = context.coordinator.selectedNoteID else { return }
+        let notes = context.coordinator.store.notes
+        guard let currentIndex = notes.firstIndex(where: { $0.id == currentID }) else { return }
+        let nextIndex = currentIndex < notes.count - 1 ? currentIndex + 1 : 0
+        context.coordinator.selectedNoteID = notes[nextIndex].id
+    }
+}
+
+struct SelectAllCommand: AppCommand {
+    let id = "list.selectAll"
+    let title = "全选"
+    let subtitle: String? = "选中当前列表所有笔记"
+    let keywords = ["select", "all", "全选"]
+    let category: CommandCategory = .navigation
+    let symbol = "checkmark.circle"
+
+    func isEnabled(in context: CommandContext) -> Bool { !context.coordinator.store.notes.isEmpty }
+
+    func run(in context: CommandContext) async {
+        context.focus.selectAllSubject.send()
+    }
+}
+
 // MARK: - Registration
 
 enum BuiltinCommands {
@@ -402,6 +455,9 @@ enum BuiltinCommands {
         NavigateBackCommand(),
         NavigateForwardCommand(),
         ToggleFullScreenEditorCommand(),
+        PreviousNoteCommand(),
+        NextNoteCommand(),
+        SelectAllCommand(),
         CommandPaletteCommand(),
         ShortcutsPreferencesCommand(),
         FeedbackCommand(),

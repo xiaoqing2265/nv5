@@ -32,4 +32,15 @@ extension KeyboardShortcuts.Name {
     static let helpExportCrashLog = Self("help.exportCrashLog")
     
     static let navFocusLabels = Self("navigation.focus.labels", default: .init(.g, modifiers: [.control]))
+
+    // 编辑器中的上一篇/下一篇笔记
+    static let navPreviousNote = Self("navigation.previousNote", default: .init(.leftArrow, modifiers: [.option, .command]))
+    static let navNextNote = Self("navigation.nextNote", default: .init(.rightArrow, modifiers: [.option, .command]))
+
+    // 列表导航
+    static let listHome = Self("list.home", default: .init(.home))
+    static let listEnd = Self("list.end", default: .init(.end))
+    static let listPageUp = Self("list.pageUp", default: .init(.pageUp))
+    static let listPageDown = Self("list.pageDown", default: .init(.pageDown))
+    static let listSelectAll = Self("list.selectAll", default: .init(.a, modifiers: [.command]))
 }

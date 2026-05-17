@@ -18,7 +18,7 @@
                 &lt;li&gt;📖 添加了 README 和 CHANGELOG&lt;/li&gt;
                 &lt;/ul&gt;
             </description>
-            <enclosure url="https://github.com/xiaoqing2265/nv5/releases/download/v0.9.0-beta1/NV5-v0.9.0-beta1.dmg" length="0" type="application/octet-stream" sparkle:edSignature=""/>
+            <enclosure url="https://github.com/xiaoqing2265/nv5/releases/download/v0.9.0-beta1/NV5-v0.9.0-beta1.dmg" length="8999656" type="application/octet-stream" sparkle:edSignature=""/>
         </item>
         <item>
             <title>0.9.0-alpha3</title>
@@ -34,7 +34,7 @@
                 &lt;li&gt;✨ 添加了帮助命令&lt;/li&gt;
                 &lt;/ul&gt;
             </description>
-            <enclosure url="https://github.com/xiaoqing2265/nv5/releases/download/v0.9.0-alpha3/NV5-v0.9.0-alpha3.dmg" length="0" type="application/octet-stream" sparkle:edSignature=""/>
+            <enclosure url="https://github.com/xiaoqing2265/nv5/releases/download/v0.9.0-alpha3/NV5-v0.9.0-alpha3.dmg" length="8692459" type="application/octet-stream" sparkle:edSignature=""/>
         </item>
         <item>
             <title>0.9.0-alpha2</title>
@@ -50,7 +50,7 @@
                 &lt;li&gt;✨ 实现了持久化搜索历史&lt;/li&gt;
                 &lt;/ul&gt;
             </description>
-            <enclosure url="https://github.com/xiaoqing2265/nv5/releases/download/v0.9.0-alpha2/NV5-v0.9.0-alpha2.dmg" length="0" type="application/octet-stream" sparkle:edSignature=""/>
+            <enclosure url="https://github.com/xiaoqing2265/nv5/releases/download/v0.9.0-alpha2/NV5-v0.9.0-alpha2.dmg" length="8606067" type="application/octet-stream" sparkle:edSignature=""/>
         </item>
         <item>
             <title>0.9.0-alpha1</title>

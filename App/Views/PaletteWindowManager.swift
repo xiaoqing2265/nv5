@@ -9,6 +9,7 @@ final class PaletteWindowManager {
     private var hostingView: NSHostingView<AnyView>?
     private var observerTokens: [NSObjectProtocol] = []
     private var focusCoordinator: FocusCoordinator?
+    private var localMonitor: Any?
 
     private init() {}
 
@@ -24,6 +25,7 @@ final class PaletteWindowManager {
         let paletteView = CommandPaletteView()
             .environment(coordinator)
             .environment(focusCoordinator)
+            .environment(OverlayManager.shared)
 
         let hosting = NSHostingView(rootView: AnyView(paletteView))
         hostingView = hosting
@@ -58,27 +60,22 @@ final class PaletteWindowManager {
 
         self.panel = panel
 
-        let token = NotificationCenter.default.addObserver(
-            forName: NSWindow.didBecomeKeyNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            let window = notification.object as? NSWindow
-            Task { @MainActor [weak self, window] in
-                guard let self = self,
-                      let window = window,
-                      window != self.panel else { return }
-                if window.title.contains("NV5") || window == NSApp.mainWindow {
-                    self.hide()
-                }
-            }
+        // Monitor mouse clicks to hide palette when clicking outside
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+            guard let self = self, let panel = self.panel else { return event }
+            // Click inside panel → pass through
+            if event.window == panel { return event }
+            // Click outside panel → hide and pass through to underlying view
+            self.hide()
+            return event
         }
-        observerTokens.append(token)
 
+        // Explicitly focus the palette's text field
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 100_000_000)
-            if let tf = hosting.findFirstResponder() as? NSTextField {
-                tf.selectText(nil)
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            if let hosting = self.hostingView,
+               let tf = hosting.subviews.first(where: { $0 is NSTextField }) as? NSTextField {
+                hosting.window?.makeFirstResponder(tf)
             }
         }
     }
@@ -87,6 +84,10 @@ final class PaletteWindowManager {
         OverlayManager.shared.close(.commandPalette)
         observerTokens.forEach { NotificationCenter.default.removeObserver($0) }
         observerTokens.removeAll()
+        if let monitor = localMonitor {
+            NSEvent.removeMonitor(monitor)
+            localMonitor = nil
+        }
         panel?.close()
         panel = nil
         hostingView = nil

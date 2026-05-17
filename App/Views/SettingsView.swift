@@ -3,58 +3,79 @@ import KeyboardShortcuts
 import NVSync
 import NVExport
 
-// ── 语言枚举 ─────────────────────────────────────────────
-enum AppLanguage: String, CaseIterable, Identifiable {
-    case system = "system"
-    case zhHans = "zh-Hans"
-    case en     = "en"
+// MARK: - 设置分类
+enum SettingsCategory: String, CaseIterable, Identifiable {
+    case general = "通用"
+    case appearance = "外观"
+    case editor = "编辑"
+    case notes = "笔记"
+    case sync = "同步"
+    case export = "导出"
+    case shortcuts = "快捷键"
 
     var id: String { rawValue }
 
-    var displayName: String {
-        switch self {
-        case .system: return "自动（跟随系统）"
-        case .zhHans: return "中文"
-        case .en:     return "English"
-        }
-    }
+    var displayName: String { rawValue }
 
-    /// 写入 UserDefaults 的 AppleLanguages key 所需的值
-    var appleLanguages: [String]? {
+    var systemImage: String {
         switch self {
-        case .system: return nil          // nil = 删除 key，恢复跟随系统
-        case .zhHans: return ["zh-Hans"]
-        case .en:     return ["en"]
+        case .general: return "gear"
+        case .appearance: return "paintbrush"
+        case .editor: return "pencil.and.scribble"
+        case .notes: return "note.text"
+        case .sync: return "icloud"
+        case .export: return "square.and.arrow.up"
+        case .shortcuts: return "keyboard"
         }
     }
 }
 
-// ── SettingsView ──────────────────────────────────────────
-struct SettingsView: View {
+// MARK: - 主设置视图（侧边栏导航）
+struct SettingsNavigationView: View {
+    @State private var selectedCategory: SettingsCategory = .general
+
     var body: some View {
-        TabView {
-            GeneralSettings()
-                .tabItem { Label("通用", systemImage: "gear") }
-            AppearanceSettings()
-                .tabItem { Label("外观", systemImage: "paintbrush") }
-            EditorBehaviorSettings()
-                .tabItem { Label("编辑", systemImage: "pencil.and.scribble") }
-            WebDAVSettingsView()
-                .tabItem { Label("同步", systemImage: "icloud") }
-            ExportSettings()
-                .tabItem { Label("导出", systemImage: "square.and.arrow.up") }
-            ShortcutsSettingsView()
-                .tabItem { Label("快捷键", systemImage: "keyboard") }
+        NavigationSplitView {
+            // MARK: - 左侧侧边栏
+            List(SettingsCategory.allCases, selection: $selectedCategory) { category in
+                NavigationLink(value: category) {
+                    Label(category.displayName, systemImage: category.systemImage)
+                }
+            }
+            .listStyle(.sidebar)
+        } detail: {
+            // MARK: - 右侧内容区
+            Group {
+                switch selectedCategory {
+                case .general:
+                    GeneralSettingsNew()
+                case .appearance:
+                    AppearanceSettingsNew()
+                case .editor:
+                    EditorBehaviorSettingsNew()
+                case .notes:
+                    NotesSettingsNew()
+                case .sync:
+                    SyncSettingsNew()
+                case .export:
+                    ExportSettingsNew()
+                case .shortcuts:
+                    ShortcutsSettingsNew()
+                }
+            }
+            .navigationTitle(selectedCategory.displayName)
         }
-        .frame(width: 700, height: 600)
+        .frame(minWidth: 800, minHeight: 600)
     }
 }
 
-// ── GeneralSettings ───────────────────────────────────────
-struct GeneralSettings: View {
-    @AppStorage("editorFontSize")      private var fontSize: Double = 14
-    @AppStorage("syncIntervalMinutes") private var syncInterval: Double = 5
-    @AppStorage("appLanguage")         private var appLanguageRaw: String = AppLanguage.system.rawValue
+// MARK: - 通用设置
+struct GeneralSettingsNew: View {
+    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.system.rawValue
+    @AppStorage("launchAtStartup") private var launchAtStartup: Bool = false
+    @AppStorage("restoreWindowState") private var restoreWindowState: Bool = true
+    @AppStorage("closeWindowToQuit") private var closeWindowToQuit: Bool = false
+    @AppStorage("minimizeToTray") private var minimizeToTray: Bool = false
 
     private var appLanguage: Binding<AppLanguage> {
         Binding(
@@ -68,39 +89,50 @@ struct GeneralSettings: View {
 
     var body: some View {
         Form {
-            // 字体大小
-            Slider(value: $fontSize, in: 10...22, step: 1) {
-                Text("编辑器字号：\(Int(fontSize))pt")
+            Section("启动行为") {
+                Toggle("启动时显示窗口", isOn: .constant(true))
+                    .disabled(true)
+                Toggle("恢复上次窗口状态", isOn: $restoreWindowState)
             }
 
-            // 同步间隔
-            Stepper("每 \(Int(syncInterval)) 分钟同步一次",
-                    value: $syncInterval, in: 1...60, step: 1)
+            Section("窗口行为") {
+                Toggle("关闭窗口时退出程序", isOn: $closeWindowToQuit)
+                Toggle("最小化到托盘", isOn: $minimizeToTray)
+            }
 
-            Divider()
+            Section("语言") {
+                Picker("语言", selection: appLanguage) {
+                    ForEach(AppLanguage.allCases) { lang in
+                        Text(lang.displayName).tag(lang)
+                    }
+                }
 
-            // 语言选择
-            Picker("语言", selection: appLanguage) {
-                ForEach(AppLanguage.allCases) { lang in
-                    Text(lang.displayName).tag(lang)
+                if appLanguage.wrappedValue != .system {
+                    HStack(spacing: 4) {
+                        Image(systemName: "info.circle")
+                            .foregroundStyle(.secondary)
+                        Text("语言更改将在重启应用后生效")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
-            .pickerStyle(.radioGroup)   // 三个选项用 radioGroup 最清晰
 
-            if appLanguage.wrappedValue != .system {
-                HStack(spacing: 4) {
-                    Image(systemName: "info.circle")
+            Section("关于") {
+                HStack {
+                    Text("版本")
+                    Spacer()
+                    Text("0.9.0-rc1")
                         .foregroundStyle(.secondary)
-                    Text("语言更改将在重启应用后生效")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                }
+                Button("检查更新") {
+                    // TODO: 检查更新
                 }
             }
         }
-        .padding()
+        .formStyle(.grouped)
     }
 
-    // 把语言偏好写入 UserDefaults，macOS 下次启动时读取
     private func applyLanguage(_ language: AppLanguage) {
         if let langs = language.appleLanguages {
             UserDefaults.standard.set(langs, forKey: "AppleLanguages")
@@ -109,14 +141,12 @@ struct GeneralSettings: View {
         }
         UserDefaults.standard.synchronize()
 
-        // 弹出重启提示
         let alert = NSAlert()
         alert.messageText = "需要重启应用"
         alert.informativeText = "语言更改将在重启后生效。"
         alert.addButton(withTitle: "立即重启")
         alert.addButton(withTitle: "稍后")
         if alert.runModal() == .alertFirstButtonReturn {
-            // 重启应用
             let url = Bundle.main.bundleURL
             let task = Process()
             task.launchPath = "/usr/bin/open"
@@ -127,46 +157,175 @@ struct GeneralSettings: View {
     }
 }
 
-struct ExportSettings: View {
-    @State private var exportDirectoryURL: URL? = ExportPreferences.exportDirectory
-    @AppStorage("defaultExportFormat") private var defaultFormat: String = ExportFormat.markdown.rawValue
+// MARK: - 外观设置
+struct AppearanceSettingsNew: View {
+    @AppStorage("appTheme") private var themeRaw: String = AppTheme.system.rawValue
+    @AppStorage("editorFont") private var fontRaw: String = EditorFont.menlo.rawValue
+    @AppStorage("editorFontSize") private var fontSize: Double = 14
+    @AppStorage("colorTheme") private var colorThemeKey: String = "default"
+    @AppStorage("lineHeight") private var lineHeight: Double = 1.5
+
+    private var theme: Binding<AppTheme> {
+        Binding(
+            get: { AppTheme(rawValue: themeRaw) ?? .system },
+            set: { themeRaw = $0.rawValue }
+        )
+    }
+
+    private var font: Binding<EditorFont> {
+        Binding(
+            get: { EditorFont(rawValue: fontRaw) ?? .menlo },
+            set: { fontRaw = $0.rawValue }
+        )
+    }
 
     var body: some View {
         Form {
-            Section("导出目录") {
-                HStack {
-                    Text(exportDirectoryURL?.path ?? "未配置")
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button("选择...") { chooseDirectory() }
+            Section("主题") {
+                Picker("外观", selection: theme) {
+                    ForEach(AppTheme.allCases) { t in
+                        Text(t.displayName).tag(t)
+                    }
                 }
             }
-            Section("默认格式") {
-                Picker("⌘⇧E 使用", selection: $defaultFormat) {
-                    ForEach(ExportFormat.allCases, id: \.rawValue) { f in
-                        Text(f.displayName).tag(f.rawValue)
+
+            Section("编辑器字体") {
+                Picker("字体", selection: font) {
+                    ForEach(EditorFont.allCases) { f in
+                        Text(f.displayName).tag(f)
+                    }
+                }
+
+                HStack {
+                    Text("字号")
+                    Spacer()
+                    HStack(spacing: 12) {
+                        Slider(value: $fontSize, in: 10...24, step: 1)
+                            .frame(maxWidth: 120)
+                        Text("\(Int(fontSize))pt")
+                            .frame(width: 40, alignment: .trailing)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                HStack {
+                    Text("行高")
+                    Spacer()
+                    HStack(spacing: 12) {
+                        Slider(value: $lineHeight, in: 1.0...2.0, step: 0.1)
+                            .frame(maxWidth: 120)
+                        Text(String(format: "%.1f", lineHeight))
+                            .frame(width: 40, alignment: .trailing)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            Section("颜色主题") {
+                Picker("主题", selection: $colorThemeKey) {
+                    ForEach(defaultColorThemes.keys.sorted(), id: \.self) { key in
+                        if let theme = defaultColorThemes[key] {
+                            Text(theme.name).tag(key)
+                        }
+                    }
+                }
+            }
+
+            Section("预览") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("The quick brown fox jumps over the lazy dog")
+                        .font(.system(size: CGFloat(fontSize), design: .monospaced))
+                        .lineSpacing(lineHeight - 1.0)
+                        .padding(8)
+                        .background(Color(.controlBackgroundColor))
+                        .cornerRadius(6)
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+// MARK: - 编辑器行为设置
+struct EditorBehaviorSettingsNew: View {
+    @AppStorage("tabKeyBehavior") private var tabBehaviorRaw: String = TabKeyBehavior.indent.rawValue
+    @AppStorage("enableSpellCheck") private var enableSpellCheck: Bool = true
+    @AppStorage("autoSaveInterval") private var autoSaveInterval: Double = 30
+    @AppStorage("preserveFormatting") private var preserveFormatting: Bool = true
+    @AppStorage("makeLinksClickable") private var makeLinksClickable: Bool = true
+
+    private var tabBehavior: Binding<TabKeyBehavior> {
+        Binding(
+            get: { TabKeyBehavior(rawValue: tabBehaviorRaw) ?? .indent },
+            set: { tabBehaviorRaw = $0.rawValue }
+        )
+    }
+
+    var body: some View {
+        Form {
+            Section("Tab 键行为") {
+                Picker("Tab 键", selection: tabBehavior) {
+                    ForEach(TabKeyBehavior.allCases) { behavior in
+                        Text(behavior.displayName).tag(behavior)
+                    }
+                }
+            }
+
+            Section("编辑体验") {
+                Toggle("键入时检查拼写", isOn: $enableSpellCheck)
+                Toggle("复制时保留基本样式", isOn: $preserveFormatting)
+                Toggle("链接可点击", isOn: $makeLinksClickable)
+            }
+
+            Section("自动保存") {
+                HStack {
+                    Text("自动保存间隔")
+                    Spacer()
+                    HStack(spacing: 12) {
+                        Slider(value: $autoSaveInterval, in: 10...120, step: 10)
+                            .frame(maxWidth: 120)
+                        Text("\(Int(autoSaveInterval))秒")
+                            .frame(width: 50, alignment: .trailing)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
         }
-        .padding()
-    }
-
-    private func chooseDirectory() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        if panel.runModal() == .OK, let url = panel.url {
-            try? ExportPreferences.setExportDirectory(url)
-            exportDirectoryURL = url
-        }
+        .formStyle(.grouped)
     }
 }
 
-struct WebDAVSettingsView: View {
+// MARK: - 笔记设置
+struct NotesSettingsNew: View {
+    @AppStorage("defaultNoteFormat") private var defaultFormat: String = "markdown"
+    @AppStorage("autoSelectRelatedNote") private var autoSelectRelatedNote: Bool = true
+    @AppStorage("confirmDelete") private var confirmDelete: Bool = true
+    @AppStorage("showLabelCount") private var showLabelCount: Bool = true
+
+    var body: some View {
+        Form {
+            Section("笔记格式") {
+                Picker("默认格式", selection: $defaultFormat) {
+                    Text("Markdown").tag("markdown")
+                    Text("纯文本").tag("plaintext")
+                }
+            }
+
+            Section("笔记行为") {
+                Toggle("搜索时自动选择相关笔记", isOn: $autoSelectRelatedNote)
+                Toggle("删除笔记时需要确认", isOn: $confirmDelete)
+            }
+
+            Section("标签显示") {
+                Toggle("显示标签数量", isOn: $showLabelCount)
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+// MARK: - 同步设置
+struct SyncSettingsNew: View {
     @Environment(AppCoordinator.self) private var coordinator
     @State private var serverInput: String = ""
     @State private var username: String = ""
@@ -174,6 +333,8 @@ struct WebDAVSettingsView: View {
     @State private var basePath: String = "NV5"
     @State private var testResult: String?
     @State private var isTesting = false
+    @AppStorage("syncIntervalMinutes") private var syncInterval: Double = 5
+    @AppStorage("autoSync") private var autoSync: Bool = true
 
     private var parsedURL: URL? {
         ServerURLParser.parse(serverInput)
@@ -181,7 +342,7 @@ struct WebDAVSettingsView: View {
 
     var body: some View {
         Form {
-            Section("服务器") {
+            Section("服务器配置") {
                 TextField("服务器地址", text: $serverInput,
                          prompt: Text("192.168.1.1:5005 或 dav.example.com"))
                     .textContentType(.URL)
@@ -194,15 +355,20 @@ struct WebDAVSettingsView: View {
                 TextField("文件夹路径", text: $basePath, prompt: Text("NV5"))
             }
 
-            if let url = parsedURL {
-                let previewPath = basePath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-                Text("将连接到：\(url.absoluteString)/\(previewPath)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else if !serverInput.isEmpty {
-                Text("无法识别的地址格式")
-                    .font(.caption)
-                    .foregroundStyle(.red)
+            Section("同步选项") {
+                Toggle("自动同步", isOn: $autoSync)
+
+                HStack {
+                    Text("同步间隔")
+                    Spacer()
+                    HStack(spacing: 12) {
+                        Slider(value: $syncInterval, in: 1...60, step: 1)
+                            .frame(maxWidth: 120)
+                        Text("\(Int(syncInterval))分钟")
+                            .frame(width: 60, alignment: .trailing)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
 
             Section {
@@ -222,7 +388,7 @@ struct WebDAVSettingsView: View {
                 }
             }
         }
-        .padding()
+        .formStyle(.grouped)
         .onAppear(perform: loadCurrent)
     }
 
@@ -279,7 +445,80 @@ struct WebDAVSettingsView: View {
     }
 }
 
-// MARK: - 主题枚举
+// MARK: - 导出设置
+struct ExportSettingsNew: View {
+    @State private var exportDirectoryURL: URL? = ExportPreferences.exportDirectory
+    @AppStorage("defaultExportFormat") private var defaultFormat: String = ExportFormat.markdown.rawValue
+
+    var body: some View {
+        Form {
+            Section("导出目录") {
+                HStack {
+                    Text(exportDirectoryURL?.path ?? "未配置")
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("选择...") { chooseDirectory() }
+                }
+            }
+
+            Section("默认格式") {
+                Picker("导出格式", selection: $defaultFormat) {
+                    ForEach(ExportFormat.allCases, id: \.rawValue) { f in
+                        Text(f.displayName).tag(f.rawValue)
+                    }
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private func chooseDirectory() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url {
+            try? ExportPreferences.setExportDirectory(url)
+            exportDirectoryURL = url
+        }
+    }
+}
+
+// MARK: - 快捷键设置
+struct ShortcutsSettingsNew: View {
+    var body: some View {
+        ShortcutsSettingsView()
+    }
+}
+
+// MARK: - 数据模型和枚举
+
+enum AppLanguage: String, CaseIterable, Identifiable {
+    case system = "system"
+    case zhHans = "zh-Hans"
+    case en     = "en"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .system: return "自动（跟随系统）"
+        case .zhHans: return "中文"
+        case .en:     return "English"
+        }
+    }
+
+    var appleLanguages: [String]? {
+        switch self {
+        case .system: return nil
+        case .zhHans: return ["zh-Hans"]
+        case .en:     return ["en"]
+        }
+    }
+}
+
 enum AppTheme: String, CaseIterable, Identifiable {
     case system = "system"
     case light = "light"
@@ -304,7 +543,6 @@ enum AppTheme: String, CaseIterable, Identifiable {
     }
 }
 
-// MARK: - 编辑器字体枚举
 enum EditorFont: String, CaseIterable, Identifiable {
     case menlo = "Menlo"
     case monaco = "Monaco"
@@ -318,7 +556,22 @@ enum EditorFont: String, CaseIterable, Identifiable {
     var displayName: String { rawValue }
 }
 
-// MARK: - 颜色主题
+enum TabKeyBehavior: String, CaseIterable, Identifiable {
+    case indent = "indent"
+    case nextFocus = "nextFocus"
+    case softIndent = "softIndent"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .indent: return "行缩进"
+        case .nextFocus: return "移动到下一焦点"
+        case .softIndent: return "软缩进（空格）"
+        }
+    }
+}
+
 struct ColorTheme {
     let name: String
     let textColor: Color
@@ -350,245 +603,3 @@ let defaultColorThemes: [String: ColorTheme] = [
         accentColor: Color(red: 0.149, green: 0.545, blue: 0.824)
     ),
 ]
-
-// MARK: - AppearanceSettings View
-struct AppearanceSettings: View {
-    @AppStorage("appTheme") private var themeRaw: String = AppTheme.system.rawValue
-    @AppStorage("editorFont") private var fontRaw: String = EditorFont.menlo.rawValue
-    @AppStorage("editorFontSize") private var fontSize: Double = 14
-    @AppStorage("colorTheme") private var colorThemeKey: String = "default"
-    @AppStorage("lineHeight") private var lineHeight: Double = 1.5
-    @AppStorage("letterSpacing") private var letterSpacing: Double = 0
-
-    private var theme: Binding<AppTheme> {
-        Binding(
-            get: { AppTheme(rawValue: themeRaw) ?? .system },
-            set: { themeRaw = $0.rawValue }
-        )
-    }
-
-    private var font: Binding<EditorFont> {
-        Binding(
-            get: { EditorFont(rawValue: fontRaw) ?? .menlo },
-            set: { fontRaw = $0.rawValue }
-        )
-    }
-
-    var body: some View {
-        Form {
-            Section("主题") {
-                Picker("外观", selection: theme) {
-                    ForEach(AppTheme.allCases) { t in
-                        Text(t.displayName).tag(t)
-                    }
-                }
-                .pickerStyle(.radioGroup)
-            }
-
-            Divider()
-
-            Section("字体") {
-                Picker("编辑器字体", selection: font) {
-                    ForEach(EditorFont.allCases) { f in
-                        Text(f.displayName).tag(f)
-                    }
-                }
-
-                HStack {
-                    Text("字号：\(Int(fontSize))pt")
-                    Spacer()
-                    Slider(value: $fontSize, in: 10...24, step: 1)
-                        .frame(maxWidth: 150)
-                }
-
-                HStack {
-                    Text("行高：\(String(format: "%.1f", lineHeight))")
-                    Spacer()
-                    Slider(value: $lineHeight, in: 1.0...2.0, step: 0.1)
-                        .frame(maxWidth: 150)
-                }
-
-                HStack {
-                    Text("字间距：\(String(format: "%.1f", letterSpacing))")
-                    Spacer()
-                    Slider(value: $letterSpacing, in: -0.5...0.5, step: 0.1)
-                        .frame(maxWidth: 150)
-                }
-            }
-
-            Divider()
-
-            Section("颜色主题") {
-                Picker("主题", selection: $colorThemeKey) {
-                    ForEach(defaultColorThemes.keys.sorted(), id: \.self) { key in
-                        if let theme = defaultColorThemes[key] {
-                            Text(theme.name).tag(key)
-                        }
-                    }
-                }
-
-                if let currentTheme = defaultColorThemes[colorThemeKey] {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text("预览")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                        }
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(spacing: 8) {
-                                Circle()
-                                    .fill(currentTheme.textColor)
-                                    .frame(width: 16, height: 16)
-                                Text("文本颜色")
-                                    .font(.caption)
-                            }
-
-                            HStack(spacing: 8) {
-                                Circle()
-                                    .fill(currentTheme.backgroundColor)
-                                    .stroke(Color.gray, lineWidth: 0.5)
-                                    .frame(width: 16, height: 16)
-                                Text("背景颜色")
-                                    .font(.caption)
-                            }
-
-                            HStack(spacing: 8) {
-                                Circle()
-                                    .fill(currentTheme.searchHighlightColor)
-                                    .frame(width: 16, height: 16)
-                                Text("搜索高亮")
-                                    .font(.caption)
-                            }
-
-                            HStack(spacing: 8) {
-                                Circle()
-                                    .fill(currentTheme.accentColor)
-                                    .frame(width: 16, height: 16)
-                                Text("强调色")
-                                    .font(.caption)
-                            }
-                        }
-                        .padding(8)
-                        .background(Color(.controlBackgroundColor))
-                        .cornerRadius(6)
-                    }
-                }
-            }
-
-            Divider()
-
-            Section("编辑器预览") {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("The quick brown fox jumps over the lazy dog")
-                        .font(.system(size: CGFloat(fontSize), design: .monospaced))
-                        .lineSpacing(lineHeight - 1.0)
-                        .tracking(letterSpacing)
-                        .padding(8)
-                        .background(Color(.controlBackgroundColor))
-                        .cornerRadius(6)
-                }
-            }
-        }
-        .padding()
-    }
-}
-
-// MARK: - Tab 键行为枚举
-enum TabKeyBehavior: String, CaseIterable, Identifiable {
-    case indent = "indent"
-    case nextFocus = "nextFocus"
-    case softIndent = "softIndent"
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .indent: return "行缩进"
-        case .nextFocus: return "移动到下一焦点"
-        case .softIndent: return "软缩进（空格）"
-        }
-    }
-
-    var description: String {
-        switch self {
-        case .indent: return "按 Tab 键时插入制表符"
-        case .nextFocus: return "按 Tab 键时移动到下一个焦点"
-        case .softIndent: return "按 Tab 键时插入空格"
-        }
-    }
-}
-
-// MARK: - EditorBehaviorSettings View
-struct EditorBehaviorSettings: View {
-    @AppStorage("tabKeyBehavior") private var tabBehaviorRaw: String = TabKeyBehavior.indent.rawValue
-    @AppStorage("enableSpellCheck") private var enableSpellCheck: Bool = true
-    @AppStorage("autoSaveInterval") private var autoSaveInterval: Double = 30
-    @AppStorage("preserveFormatting") private var preserveFormatting: Bool = true
-    @AppStorage("makeLinksClickable") private var makeLinksClickable: Bool = true
-    @AppStorage("suggestNoteLinks") private var suggestNoteLinks: Bool = true
-    @AppStorage("autoSelectRelatedNote") private var autoSelectRelatedNote: Bool = true
-    @AppStorage("confirmDelete") private var confirmDelete: Bool = true
-
-    private var tabBehavior: Binding<TabKeyBehavior> {
-        Binding(
-            get: { TabKeyBehavior(rawValue: tabBehaviorRaw) ?? .indent },
-            set: { tabBehaviorRaw = $0.rawValue }
-        )
-    }
-
-    var body: some View {
-        Form {
-            Section("Tab 键行为") {
-                Picker("Tab 键", selection: tabBehavior) {
-                    ForEach(TabKeyBehavior.allCases) { behavior in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(behavior.displayName).tag(behavior)
-                            Text(behavior.description)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                .pickerStyle(.radioGroup)
-            }
-
-            Divider()
-
-            Section("拼写和语法") {
-                Toggle("键入时检查拼写", isOn: $enableSpellCheck)
-            }
-
-            Divider()
-
-            Section("自动保存") {
-                HStack {
-                    Text("自动保存间隔：\(Int(autoSaveInterval))秒")
-                    Spacer()
-                    Slider(value: $autoSaveInterval, in: 10...120, step: 10)
-                        .frame(maxWidth: 150)
-                }
-                Text("设置为 0 禁用自动保存")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Divider()
-
-            Section("格式和链接") {
-                Toggle("复制时保留基本样式", isOn: $preserveFormatting)
-                Toggle("链接可点击", isOn: $makeLinksClickable)
-                Toggle("输入笔记链接时提供建议", isOn: $suggestNoteLinks)
-            }
-
-            Divider()
-
-            Section("笔记行为") {
-                Toggle("搜索时自动选择相关笔记", isOn: $autoSelectRelatedNote)
-                Toggle("删除笔记时需要确认", isOn: $confirmDelete)
-            }
-        }
-        .padding()
-    }
-}

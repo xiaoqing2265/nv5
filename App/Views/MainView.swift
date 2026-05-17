@@ -93,10 +93,6 @@ struct MainView: View {
             TagEditor()
                 .transition(.scale.combined(with: .opacity))
         }
-        if overlayManager.isActive(.cheatSheet) {
-            CheatSheetView()
-                .transition(.scale.combined(with: .opacity))
-        }
     }
 
     private func registerCommands() {

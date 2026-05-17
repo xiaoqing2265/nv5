@@ -3,7 +3,6 @@ import Observation
 
 public enum OverlayType: String, CaseIterable, Hashable, Sendable {
     case tagEditor
-    case cheatSheet
     case commandPalette
 }
 

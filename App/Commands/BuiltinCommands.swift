@@ -348,21 +348,6 @@ struct ExportCrashLogCommand: AppCommand {
     }
 }
 
-struct CheatSheetCommand: AppCommand {
-    let id = "help.cheatSheet"
-    let title = "快捷键速查表"
-    let subtitle: String? = "显示所有快捷键的完整列表"
-    let keywords = ["cheat sheet", "快捷键", "列表"]
-    let category: CommandCategory = .help
-    let symbol = "questionmark.circle"
-
-    func isEnabled(in context: CommandContext) -> Bool { true }
-
-    func run(in context: CommandContext) async {
-        OverlayManager.shared.open(.cheatSheet)
-    }
-}
-
 struct FocusLabelsCommand: AppCommand {
     let id = "navigation.focus.labels"
     let title = "聚焦标签视图"
@@ -462,7 +447,6 @@ enum BuiltinCommands {
         ShortcutsPreferencesCommand(),
         FeedbackCommand(),
         ExportCrashLogCommand(),
-        CheatSheetCommand(),
         FocusLabelsCommand(),
     ]
 }

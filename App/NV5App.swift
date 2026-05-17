@@ -84,7 +84,7 @@ struct NV5App: App {
         }
 
         Settings {
-            SettingsView()
+            SettingsNavigationView()
                 .environment(coordinator)
         }
     }
@@ -209,9 +209,6 @@ public final class AppCoordinator {
         }
         KeyboardShortcuts.onKeyUp(for: .appPreferencesShortcuts) {
             Task { @MainActor in await ShortcutsPreferencesCommand().run(in: ctx) }
-        }
-        KeyboardShortcuts.onKeyUp(for: .helpCheatSheet) {
-            Task { @MainActor in await CheatSheetCommand().run(in: ctx) }
         }
         KeyboardShortcuts.onKeyUp(for: .helpFeedback) {
             Task { @MainActor in await FeedbackCommand().run(in: ctx) }

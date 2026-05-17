@@ -27,7 +27,6 @@ extension KeyboardShortcuts.Name {
     
     static let viewToggleFullScreenEditor = Self("view.toggleFullScreenEditor", default: .init(.f, modifiers: [.command, .control]))
     
-    static let helpCheatSheet = Self("help.cheatSheet", default: .init(.slash, modifiers: [.command]))
     static let helpFeedback = Self("help.feedback")
     static let helpExportCrashLog = Self("help.exportCrashLog")
     

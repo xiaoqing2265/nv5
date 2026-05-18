@@ -6,13 +6,23 @@ import Observation
 @Observable
 @MainActor
 public final class NoteStore {
-    public private(set) var notes: [Note] = []
+    public private(set) var notes: [Note] = [] {
+        didSet {
+            // nvALT 风格：笔记变化时清空搜索缓存（避免缓存过期）
+            lastSearchQuery = ""
+            lastSearchResults = []
+        }
+    }
     public private(set) var archivedNotes: [Note] = []
     public private(set) var observationError: Error?
 
     private let database: Database
     private var observationTask: Task<Void, Never>?
     private var archivedObservationTask: Task<Void, Never>?
+
+    // nvALT 风格：增量搜索缓存
+    private var lastSearchQuery: String = ""
+    private var lastSearchResults: [Note] = []
 
     public init(database: Database) {
         self.database = database
@@ -170,7 +180,7 @@ public final class NoteStore {
 
     public func search(query: String, includeArchived: Bool = false) -> [Note] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        
+
         let targetNotes: [Note]
         if includeArchived {
             targetNotes = (try? database.writer.read { db in
@@ -179,12 +189,35 @@ public final class NoteStore {
         } else {
             targetNotes = notes
         }
-        
-        guard !trimmed.isEmpty else { return targetNotes }
 
+        guard !trimmed.isEmpty else {
+            // 清空缓存
+            lastSearchQuery = ""
+            lastSearchResults = []
+            return targetNotes
+        }
+
+        // nvALT 风格：增量搜索优化
+        // Phase 1: 判断是否可以在当前结果中继续搜索
+        let searchBase: [Note]
+        let lowercaseTrimmed = trimmed.lowercased()
+        let lowercaseLastQuery = lastSearchQuery.lowercased()
+
+        if !includeArchived &&
+           !lastSearchQuery.isEmpty &&
+           lowercaseTrimmed.hasPrefix(lowercaseLastQuery) &&
+           !lastSearchResults.isEmpty {
+            // 新词是旧词的前缀，在当前结果中继续搜索（增量）
+            searchBase = lastSearchResults
+        } else {
+            // 新词不是旧词的前缀，或缓存为空，从所有笔记开始（全量）
+            searchBase = targetNotes
+        }
+
+        // Phase 2: 实际搜索
         let tokens = trimmed.split(separator: " ").map(String.init)
 
-        let matched = targetNotes.filter { note in
+        let matched = searchBase.filter { note in
             tokens.allSatisfy { token in
                 note.title.range(of: token, options: .caseInsensitive) != nil
                 || note.body.range(of: token, options: .caseInsensitive) != nil
@@ -192,7 +225,7 @@ public final class NoteStore {
             }
         }
 
-        return matched.sorted { lhs, rhs in
+        let sorted = matched.sorted { lhs, rhs in
             let lhsTitleHit = tokens.allSatisfy {
                 lhs.title.range(of: $0, options: .caseInsensitive) != nil
             }
@@ -202,6 +235,14 @@ public final class NoteStore {
             if lhsTitleHit != rhsTitleHit { return lhsTitleHit }
             return lhs.modifiedAt > rhs.modifiedAt
         }
+
+        // Phase 3: 缓存结果（只缓存非归档搜索）
+        if !includeArchived {
+            lastSearchQuery = trimmed
+            lastSearchResults = sorted
+        }
+
+        return sorted
     }
 
     /// nvALT 风格：查找标题以指定前缀开头的笔记（用于自动补全）

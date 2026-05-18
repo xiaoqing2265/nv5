@@ -134,7 +134,9 @@ struct NoteEditor: NSViewRepresentable {
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                self?.commitPendingIfNeeded()
+                Task { @MainActor in
+                    self?.commitPendingIfNeeded()
+                }
             }
         }
 

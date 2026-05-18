@@ -22,6 +22,10 @@ struct NVSearchBar: NSViewRepresentable {
                 guard let editor = field.currentEditor() else { return }
                 editor.selectAll(nil)
             }
+
+        // nvALT 风格：注册搜索框到中心控制器
+        MainWindowController.shared.registerSearchField(field)
+
         return field
     }
 
@@ -77,6 +81,12 @@ struct NVSearchBar: NSViewRepresentable {
                 }
                 historyIndex = -1
                 parent.onSubmit()
+
+                // nvALT 风格：直接将焦点移到编辑器（类似 [window makeFirstResponder:textView]）
+                // requestFocusAfterLoad 处理笔记换载时 makeFirstResponder(nil) 覆盖焦点的情况
+                MainWindowController.shared.requestFocusAfterLoad()
+                MainWindowController.shared.focusEditor()
+
                 return true
             } else if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
                 if !parent.text.isEmpty {

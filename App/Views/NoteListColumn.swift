@@ -291,6 +291,9 @@ struct NoteListColumn: View {
                 coordinator.selectedNoteID = createdID
                 coordinator.recentlyCreatedNoteID = nil
                 focusCoordinator.focus(.editor)
+                // 新笔记出现在列表后，通过 MainWindowController 直接聚焦编辑器
+                // 这是 GRDB observation 异步推送后的兜底路径
+                MainWindowController.shared.focusEditor()
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 50_000_000)
                     withAnimation {
@@ -314,14 +317,13 @@ struct NoteListColumn: View {
         if notes.isEmpty && !coordinator.query.isEmpty {
             Task { _ = await coordinator.newNoteFromQuery() }
         } else if !notes.isEmpty {
-            if coordinator.selectedNoteID == nil {
+            if coordinator.selectedNoteID == nil ||
+               !notes.contains(where: { $0.id == coordinator.selectedNoteID }) {
                 coordinator.selectedNoteID = notes.first?.id
             }
-            // 将焦点移动到编辑区，而不是笔记列表
-            Task { @MainActor in
-                await Task.yield()
-                focusCoordinator.focus(.editor)
-            }
+            // 逻辑状态同步（焦点环显示）
+            // 真正的焦点转移由 NVSearchBar 通过 MainWindowController 直接完成
+            focusCoordinator.focus(.editor)
         }
     }
 

@@ -36,6 +36,10 @@ struct NoteEditor: NSViewRepresentable {
         context.coordinator.textView = textView
         context.coordinator.parent = self
         context.coordinator.loadNote(id: noteID, body: initialBody, attributes: initialAttributes, selection: initialSelection)
+
+        // nvALT 风格：注册编辑器到中心控制器
+        MainWindowController.shared.registerEditor(textView)
+
         return scrollView
     }
 
@@ -45,12 +49,36 @@ struct NoteEditor: NSViewRepresentable {
 
         if context.coordinator.currentNoteID != noteID {
             textView.window?.makeFirstResponder(nil)
+            // 捕获并立即清除标志，避免泄漏到后续无关的笔记切换
+            let shouldFocusAfterLoad = MainWindowController.shared.pendingFocusAfterLoad
+            MainWindowController.shared.pendingFocusAfterLoad = false
             DispatchQueue.main.async {
                 context.coordinator.commitPendingIfNeeded()
                 context.coordinator.loadNote(id: noteID, body: initialBody, attributes: initialAttributes, selection: initialSelection)
+
+                // nvALT 风格：笔记加载完成后立即高亮，返回第一个匹配位置
+                let firstMatchRange = context.coordinator.applyHighlight(query: highlightQuery)
+
+                // 如果没有保存的选区且找到了匹配，跳转到第一个匹配位置
+                if (initialSelection == nil || initialSelection?.length == 0) && firstMatchRange.location != NSNotFound {
+                    textView.setSelectedRange(firstMatchRange)
+                    textView.scrollRangeToVisible(firstMatchRange)
+                } else if let range = initialSelection {
+                    // 否则滚动到保存的选区
+                    textView.scrollRangeToVisible(range)
+                }
+
+                // 焦点转移在高亮和滚动之后
+                if shouldFocusAfterLoad {
+                    MainWindowController.shared.focusEditor()
+                }
             }
+        } else {
+            // 笔记未切换：focusEditor() 已在 NVSearchBar 同步调用，消费标志防止泄漏
+            MainWindowController.shared.pendingFocusAfterLoad = false
+            // 笔记未切换但 query 可能变化，需要重新高亮
+            _ = context.coordinator.applyHighlight(query: highlightQuery)
         }
-        context.coordinator.applyHighlight(query: highlightQuery)
 
         if focusRequest && !context.coordinator.lastFocusRequest {
             context.coordinator.bringFocus()
@@ -70,7 +98,6 @@ struct NoteEditor: NSViewRepresentable {
         private var saveTask: Task<Void, Never>?
         private var undoManagers: [UUID: UndoManager] = [:]
         private var returnInListCancellable: AnyCancellable?
-        private var lastHighlightQuery: String = ""
 
         var isDirty: Bool = false
 
@@ -104,10 +131,10 @@ struct NoteEditor: NSViewRepresentable {
 
         @MainActor func loadNote(id: UUID, body: String, attributes: Data?, selection: NSRange?) {
             guard let textView = textView else { return }
-            
+
             commitPendingIfNeeded()
             currentNoteID = id
-            isDirty = false // Reset dirty flag for newly loaded note
+            isDirty = false
 
             let attributed: NSAttributedString
             if let data = attributes,
@@ -127,16 +154,15 @@ struct NoteEditor: NSViewRepresentable {
             textView.textStorage?.setAttributedString(attributed)
             textView.textStorage?.endEditing()
 
-            if let range = selection,
-               NSMaxRange(range) <= textView.string.utf16.count {
+            // 恢复保存的选区（滚动由调用方在高亮后决定）
+            if let range = selection, NSMaxRange(range) <= textView.string.utf16.count {
                 textView.setSelectedRange(range)
-                textView.scrollRangeToVisible(range)
+            } else {
+                textView.setSelectedRange(NSRange(location: 0, length: 0))
             }
 
             let undo = undoManagers[id] ?? UndoManager()
             undoManagers[id] = undo
-
-            // Keep at most 10 undo managers to prevent unbounded memory growth
             if undoManagers.count > 10 {
                 let oldest = undoManagers.keys.filter { $0 != id }.dropLast(9)
                 oldest.forEach { undoManagers.removeValue(forKey: $0) }
@@ -193,23 +219,24 @@ struct NoteEditor: NSViewRepresentable {
             isDirty = false
         }
 
-        @MainActor func applyHighlight(query: String) {
-            guard query != lastHighlightQuery else { return }
-            lastHighlightQuery = query
-
+        @MainActor func applyHighlight(query: String) -> NSRange {
             guard let textView = textView,
                   let layoutManager = textView.layoutManager,
                   let storage = textView.textStorage,
                   storage.length > 0,
-                  textView.window != nil else { return }
+                  textView.window != nil else { return NSMakeRange(NSNotFound, 0) }
 
             let fullRange = NSRange(location: 0, length: storage.length)
             layoutManager.removeTemporaryAttribute(.backgroundColor, forCharacterRange: fullRange)
 
-            guard !query.isEmpty else { return }
+            guard !query.isEmpty else { return NSMakeRange(NSNotFound, 0) }
+
             let terms = query.split(separator: " ").map(String.init)
             let highlightColor = NSColor.systemYellow.withAlphaComponent(0.4)
             let nsString = storage.string as NSString
+
+            // nvALT 风格：记录第一个匹配位置
+            var firstMatchRange = NSMakeRange(NSNotFound, 0)
 
             for term in terms where !term.isEmpty {
                 var searchStart = 0
@@ -217,12 +244,20 @@ struct NoteEditor: NSViewRepresentable {
                     let searchRange = NSRange(location: searchStart, length: nsString.length - searchStart)
                     let found = nsString.range(of: term, options: .caseInsensitive, range: searchRange)
                     if found.location == NSNotFound { break }
+
+                    // 记录第一个匹配位置（最靠前的）
+                    if firstMatchRange.location == NSNotFound || found.location < firstMatchRange.location {
+                        firstMatchRange = found
+                    }
+
                     layoutManager.addTemporaryAttribute(
                         .backgroundColor, value: highlightColor, forCharacterRange: found
                     )
                     searchStart = found.location + found.length
                 }
             }
+
+            return firstMatchRange
         }
     }
 }

@@ -71,7 +71,8 @@ struct NoteListColumn: View {
             onArrowUp: { searchBarArrowUp() },
             onEscape: { focusCoordinator.escapeToSearch() },
             onEscapeEmpty: { focusCoordinator.escapeToList() },
-            focusCoordinator: focusCoordinator
+            focusCoordinator: focusCoordinator,
+            store: store
         )
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
@@ -117,6 +118,7 @@ struct NoteListColumn: View {
             .onKeyPress(.upArrow, phases: .down, action: onUpArrow)
             .onKeyPress(.downArrow, phases: .down, action: onDownArrow)
             .onKeyPress(.space, phases: .down, action: onSpace)
+            .onKeyPress(action: onAnyKey)  // nvALT 风格：任意键转发到搜索框
             .onChange(of: focusCoordinator.current) { _, new in
                 listFocused = (new == .noteList)
             }
@@ -173,6 +175,24 @@ struct NoteListColumn: View {
             return .handled
         }
         return .ignored
+    }
+
+    // nvALT 风格：列表中任意可打印字符转发到搜索框
+    private func onAnyKey(_ event: KeyPress) -> KeyPress.Result {
+        guard listFocused else { return .ignored }
+
+        // 获取按键字符
+        guard let char = event.characters.first,
+              char.isLetter || char.isNumber || char.isPunctuation || char == " " else {
+            return .ignored
+        }
+
+        // 转发到搜索框：清空当前 query，添加新字符，聚焦搜索框
+        coordinator.query = String(char)
+        MainWindowController.shared.focusSearchField()
+        focusCoordinator.focus(.searchField)
+
+        return .handled
     }
 
     private func onSpace(_ event: KeyPress) -> KeyPress.Result {

@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import Combine
+import NVStore
 
 struct NVSearchBar: NSViewRepresentable {
     @Binding var text: String
@@ -11,6 +12,7 @@ struct NVSearchBar: NSViewRepresentable {
     var onEscape: () -> Void
     var onEscapeEmpty: () -> Void
     var focusCoordinator: FocusCoordinator
+    var store: NoteStore
 
     func makeNSView(context: Context) -> NSSearchField {
         let field = NSSearchField()
@@ -22,10 +24,7 @@ struct NVSearchBar: NSViewRepresentable {
                 guard let editor = field.currentEditor() else { return }
                 editor.selectAll(nil)
             }
-
-        // nvALT 风格：注册搜索框到中心控制器
         MainWindowController.shared.registerSearchField(field)
-
         return field
     }
 
@@ -34,7 +33,6 @@ struct NVSearchBar: NSViewRepresentable {
             nsView.stringValue = text
         }
         context.coordinator.parent = self
-
         if isFocused && !context.coordinator.lastIsFocused {
             requestFocus(field: nsView)
         }
@@ -64,9 +62,30 @@ struct NVSearchBar: NSViewRepresentable {
         init(_ parent: NVSearchBar) { self.parent = parent }
 
         func controlTextDidChange(_ obj: Notification) {
-            guard let field = obj.object as? NSSearchField else { return }
-            parent.text = field.stringValue
+            guard let field = obj.object as? NSSearchField,
+                  let fieldEditor = obj.userInfo?["NSFieldEditor"] as? NSTextView else { return }
+
+            let newText = field.stringValue
+            let oldText = parent.text
             escapeCount = 0
+
+            // nvALT 风格：标题自动补全
+            // 只在用户输入（不是删除）时触发
+            if newText.count > oldText.count, !newText.isEmpty {
+                if let matchedTitle = parent.store.noteTitlePrefixedBy(newText) {
+                    let cursorPos = fieldEditor.selectedRange().location
+                    if cursorPos < matchedTitle.count {
+                        let remaining = String(matchedTitle.dropFirst(cursorPos))
+                        // 插入补全部分并选中（用户继续输入会覆盖）
+                        fieldEditor.insertText(remaining, replacementRange: NSRange(location: cursorPos, length: 0))
+                        fieldEditor.setSelectedRange(NSRange(location: cursorPos, length: remaining.count))
+                        parent.text = matchedTitle
+                        return
+                    }
+                }
+            }
+
+            parent.text = newText
         }
 
         func controlTextDidBeginEditing(_ obj: Notification) {
@@ -81,12 +100,8 @@ struct NVSearchBar: NSViewRepresentable {
                 }
                 historyIndex = -1
                 parent.onSubmit()
-
-                // nvALT 风格：直接将焦点移到编辑器（类似 [window makeFirstResponder:textView]）
-                // requestFocusAfterLoad 处理笔记换载时 makeFirstResponder(nil) 覆盖焦点的情况
                 MainWindowController.shared.requestFocusAfterLoad()
                 MainWindowController.shared.focusEditor()
-
                 return true
             } else if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
                 if !parent.text.isEmpty {

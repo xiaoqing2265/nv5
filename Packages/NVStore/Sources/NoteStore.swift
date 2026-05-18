@@ -204,6 +204,20 @@ public final class NoteStore {
         }
     }
 
+    /// nvALT 风格：查找标题以指定前缀开头的笔记（用于自动补全）
+    /// 返回最短的匹配标题（优先补全短标题）
+    public func noteTitlePrefixedBy(_ prefix: String) -> String? {
+        guard !prefix.isEmpty else { return nil }
+
+        let lowercasePrefix = prefix.lowercased()
+        let matches = notes.filter { note in
+            note.title.lowercased().hasPrefix(lowercasePrefix)
+        }
+
+        // 返回最短的匹配标题（nvALT 的 prefixParents 逻辑）
+        return matches.min(by: { $0.title.count < $1.title.count })?.title
+    }
+
     public func dirtyNotes() async throws -> [Note] {
         try await database.writer.read { db in
             try Note.filter(Note.Columns.localDirty == true).fetchAll(db)

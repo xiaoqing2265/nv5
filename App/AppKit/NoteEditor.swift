@@ -40,6 +40,9 @@ struct NoteEditor: NSViewRepresentable {
         // nvALT 风格：注册编辑器到中心控制器
         MainWindowController.shared.registerEditor(textView)
 
+        // nvALT 风格：监听应用切换，立即保存（不依赖防抖定时器）
+        context.coordinator.setupAppSwitchObserver()
+
         return scrollView
     }
 
@@ -77,7 +80,12 @@ struct NoteEditor: NSViewRepresentable {
             // 笔记未切换：focusEditor() 已在 NVSearchBar 同步调用，消费标志防止泄漏
             MainWindowController.shared.pendingFocusAfterLoad = false
             // 笔记未切换但 query 可能变化，需要重新高亮
-            _ = context.coordinator.applyHighlight(query: highlightQuery)
+            let firstMatchRange = context.coordinator.applyHighlight(query: highlightQuery)
+            // nvALT 风格：query 变化时，如果有匹配，跳转到第一个匹配位置
+            if !highlightQuery.isEmpty && firstMatchRange.location != NSNotFound {
+                textView.setSelectedRange(firstMatchRange)
+                textView.scrollRangeToVisible(firstMatchRange)
+            }
         }
 
         if focusRequest && !context.coordinator.lastFocusRequest {
@@ -98,6 +106,7 @@ struct NoteEditor: NSViewRepresentable {
         private var saveTask: Task<Void, Never>?
         private var undoManagers: [UUID: UndoManager] = [:]
         private var returnInListCancellable: AnyCancellable?
+        private var appSwitchObserver: Any?  // nvALT 风格：应用切换监听器
 
         var isDirty: Bool = false
 
@@ -109,6 +118,23 @@ struct NoteEditor: NSViewRepresentable {
                 .sink { [weak self] _ in
                     self?.moveCursorToEnd()
                 }
+        }
+
+        deinit {
+            if let observer = appSwitchObserver {
+                NotificationCenter.default.removeObserver(observer)
+            }
+        }
+
+        // nvALT 风格：监听应用切换，立即保存
+        func setupAppSwitchObserver() {
+            appSwitchObserver = NotificationCenter.default.addObserver(
+                forName: NSApplication.willResignActiveNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.commitPendingIfNeeded()
+            }
         }
 
         @MainActor func moveCursorToEnd() {

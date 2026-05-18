@@ -15,8 +15,7 @@ public enum ExportContent: Sendable {
     }
 }
 
-@MainActor
-public final class ExportService {
+public final class ExportService: @unchecked Sendable {
 
     public init() {}
 
@@ -25,6 +24,7 @@ public final class ExportService {
     /// 把单条笔记的指定格式内容写入系统剪贴板。
     /// - Returns: 写入的字节数，用于 UI 显示反馈
     @discardableResult
+    @MainActor
     public func copyToClipboard(_ note: Note, as format: ExportFormat) throws -> Int {
         let content = try render(note: note, as: format)
         return PasteboardDestination.write(content, format: format)
@@ -48,6 +48,7 @@ public final class ExportService {
         )
     }
 
+    @MainActor
     public func share(
         _ note: Note,
         as format: ExportFormat,
@@ -58,28 +59,6 @@ public final class ExportService {
     }
 
     // MARK: - 批量笔记
-
-    /// 把多条笔记合并导出为单个文件，每条之间用 `---` 分隔
-    public func exportMergedFile(
-        _ notes: [Note],
-        as format: ExportFormat,
-        to fileURL: URL
-    ) async throws {
-        var merged = ""
-        for (idx, note) in notes.enumerated() {
-            let content = try render(note: note, as: format)
-            guard case .text(let s) = content else {
-                throw ExportError.conversionFailed(format: format, underlying: nil)
-            }
-            merged += s
-            if idx < notes.count - 1 {
-                merged += "\n\n---\n\n"
-            }
-        }
-        try await Task.detached {
-            try merged.write(to: fileURL, atomically: true, encoding: .utf8)
-        }.value
-    }
 
     /// 把多条笔记导出为目录下的多个文件
     public func exportToDirectory(
@@ -98,7 +77,7 @@ public final class ExportService {
     // MARK: - Private
 
     /// 核心转换分发，所有格式由独立 Converter 完成
-    private func render(note: Note, as format: ExportFormat) throws -> ExportContent {
+    nonisolated func render(note: Note, as format: ExportFormat) throws -> ExportContent {
         switch format {
         case .markdown:
             return try MarkdownConverter.convert(note)

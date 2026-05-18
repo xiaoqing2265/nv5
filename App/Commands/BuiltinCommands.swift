@@ -230,10 +230,14 @@ struct BackToPreviousCommand: AppCommand {
     let category: CommandCategory = .navigation
     let symbol = "arrow.uturn.left"
 
-    func isEnabled(in context: CommandContext) -> Bool { context.coordinator.previousNoteID != nil }
+    func isEnabled(in context: CommandContext) -> Bool {
+        context.coordinator.navigationCoordinator.previousNote(existingIn: context.coordinator.store.notes, archived: context.coordinator.store.archivedNotes) != nil
+    }
 
     func run(in context: CommandContext) async {
-        context.coordinator.switchToPreviousNote()
+        if let prev = context.coordinator.navigationCoordinator.previousNote(existingIn: context.coordinator.store.notes, archived: context.coordinator.store.archivedNotes) {
+            context.coordinator.selectedNoteID = prev
+        }
     }
 }
 

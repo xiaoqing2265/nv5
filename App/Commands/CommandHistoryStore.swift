@@ -16,7 +16,7 @@ final class CommandHistoryStore {
     private var dirty = false
     private var saveTask: Task<Void, Never>?
     
-    private init() {
+    init() {
         entries = load()
     }
     

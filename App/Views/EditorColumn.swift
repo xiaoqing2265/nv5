@@ -28,7 +28,6 @@ struct EditorColumn: View {
                             focusCoordinator.focus(.editor)
                         }
                     }
-                    .focusRing(active: focusCoordinator.current == .editor)
                     .accessibilityLabel("编辑器")
                     .accessibilityElement(children: .contain)
             } else {
@@ -60,7 +59,7 @@ struct EditorColumn: View {
                                 id: id, body: body, attributes: attrs, selection: range
                             )
                         } catch {
-                            print("[NV5] Failed to save note body (id=\(id)): \(error)")
+                            coordinator.showError(error)
                         }
                     }
                 },
@@ -111,7 +110,11 @@ struct TitleBar: View {
                         Task {
                             var updated = note
                             updated.labels.remove(label)
-                            try? await store.upsert(updated)
+                            do {
+                                try await store.upsert(updated)
+                            } catch {
+                                coordinator.showError(error)
+                            }
                         }
                     })
                 }
@@ -142,7 +145,14 @@ struct TitleBar: View {
 
     private func commitTitle() {
         guard title != note.title else { return }
-        Task { try? await store.updateTitle(id: note.id, title: title) }
+        Task {
+            do {
+                try await store.updateTitle(id: note.id, title: title)
+            } catch {
+                coordinator.showError(error)
+                title = note.title
+            }
+        }
     }
 
     private func addLabel() {
@@ -151,7 +161,11 @@ struct TitleBar: View {
         Task {
             var updated = note
             updated.labels.insert(trimmed)
-            try? await store.upsert(updated)
+            do {
+                try await store.upsert(updated)
+            } catch {
+                coordinator.showError(error)
+            }
             await MainActor.run { labelInput = "" }
         }
     }

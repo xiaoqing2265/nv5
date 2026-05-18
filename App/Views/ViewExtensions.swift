@@ -28,15 +28,6 @@ extension View {
             }
     }
 
-    /// 添加焦点环视觉指示器
-    func focusRingIndicator(active: Bool, color: Color = .accentColor) -> some View {
-        self.overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(color, lineWidth: active ? 2 : 0)
-                .animation(.easeInOut(duration: 0.15), value: active)
-        )
-    }
-
     /// 添加高对比度支持
     func highContrastSupport(_ increaseContrast: Bool) -> some View {
         if increaseContrast {

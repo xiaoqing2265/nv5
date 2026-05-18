@@ -80,7 +80,6 @@ struct NoteListColumn: View {
         )
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .focusRing(active: focusCoordinator.current == .searchField)
         .accessibilityLabel("搜索栏")
     }
 
@@ -167,18 +166,26 @@ struct NoteListColumn: View {
         guard listFocused, !filteredNotes.isEmpty else { return .ignored }
         if event.modifiers.contains(.shift) {
             shiftSelect(by: -1)
-            return .handled
+        } else {
+            moveSelection(by: -1)
         }
-        return .ignored
+        return .handled
     }
 
     private func onDownArrow(_ event: KeyPress) -> KeyPress.Result {
         guard listFocused, !filteredNotes.isEmpty else { return .ignored }
         if event.modifiers.contains(.shift) {
             shiftSelect(by: 1)
-            return .handled
+        } else {
+            moveSelection(by: 1)
         }
-        return .ignored
+        return .handled
+    }
+
+    private func moveSelection(by delta: Int) {
+        let idx = filteredNotes.firstIndex(where: { $0.id == coordinator.selectedNoteID }) ?? -1
+        let next = max(0, min(filteredNotes.count - 1, idx + delta))
+        coordinator.selectedNoteID = filteredNotes[next].id
     }
 
     // nvALT 风格：列表中任意可打印字符转发到搜索框

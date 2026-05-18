@@ -16,7 +16,11 @@ import NVModel
             let firstLine = text.components(separatedBy: .newlines).first ?? text
             let title = String(firstLine.prefix(40))
             let note = Note(title: title, body: text)
-            try? await currentCoordinator.store.upsert(note)
+            do {
+                try await currentCoordinator.store.upsert(note)
+            } catch {
+                NSLog("[NV5] ServicesProvider upsert failed: \(error)")
+            }
         }
     }
 }

@@ -1,8 +1,6 @@
 import AppIntents
 import NVModel
-import NVStore
 import Foundation
-import GRDB
 
 struct NoteEntity: AppEntity {
     nonisolated(unsafe) static var typeDisplayRepresentation: TypeDisplayRepresentation = "笔记"
@@ -27,41 +25,29 @@ struct NoteEntity: AppEntity {
     }
 }
 
+@MainActor
 struct NoteEntityQuery: EntityStringQuery {
+    private var repo: NoteRepository { AppEnvironment.shared.noteRepository }
+
     func entities(for identifiers: [String]) async throws -> [NoteEntity] {
-        return try await MainActor.run {
-            let db = AppEnvironment.shared.database
-            return try db.writer.read { db in
-                try Note.fetchAll(db, keys: identifiers).map { NoteEntity(from: $0) }
+        var notes: [Note] = []
+        for idStr in identifiers {
+            guard let id = UUID(uuidString: idStr) else { continue }
+            if let note = try await repo.fetchNote(id: id) {
+                notes.append(note)
             }
         }
+        return notes.map { NoteEntity(from: $0) }
     }
-    
+
     func suggestedEntities() async throws -> [NoteEntity] {
-        return try await MainActor.run {
-            let db = AppEnvironment.shared.database
-            return try db.writer.read { db in
-                try Note.order(Note.Columns.modifiedAt.desc).limit(10).fetchAll(db).map { NoteEntity(from: $0) }
-            }
-        }
+        let notes = try await repo.fetchAllActiveNotes()
+        return Array(notes.prefix(10)).map { NoteEntity(from: $0) }
     }
-    
+
     func entities(matching string: String) async throws -> [NoteEntity] {
         let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-        return try await MainActor.run {
-            let db = AppEnvironment.shared.database
-            return try db.writer.read { db in
-                try Note
-                    .filter(Note.Columns.deletedLocally == false)
-                    .filter(Note.Columns.archived == false)
-                    .fetchAll(db)
-                    .filter { note in
-                        note.title.localizedCaseInsensitiveContains(trimmed)
-                        || note.body.localizedCaseInsensitiveContains(trimmed)
-                        || note.labels.contains { $0.localizedCaseInsensitiveContains(trimmed) }
-                    }
-                    .map { NoteEntity(from: $0) }
-            }
-        }
+        let notes = await repo.search(query: trimmed)
+        return notes.map { NoteEntity(from: $0) }
     }
 }

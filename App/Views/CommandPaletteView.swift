@@ -1,5 +1,4 @@
 import SwiftUI
-import KeyboardShortcuts
 
 struct CommandPaletteView: View {
     @Environment(AppCoordinator.self) private var coordinator
@@ -222,19 +221,8 @@ struct CommandRow: View {
                         .foregroundStyle(.tertiary)
                 }
             }
-            Spacer()
-            if let shortcut = shortcutBinding(for: command.id) {
-                Text(shortcut)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.tertiary)
-            }
         }
         .padding(.vertical, 4)
     }
 
-    private func shortcutBinding(for commandID: String) -> String? {
-        let name = KeyboardShortcuts.Name(commandID)
-        guard let shortcut = KeyboardShortcuts.getShortcut(for: name) else { return nil }
-        return shortcut.description
-    }
 }

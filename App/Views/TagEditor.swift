@@ -51,7 +51,11 @@ struct TagEditor: View {
                                 Task {
                                     var updated = note
                                     updated.labels.remove(label)
-                                    try? await store.upsert(updated)
+                                    do {
+                                        try await store.upsert(updated)
+                                    } catch {
+                                        print("[NV5] Failed to remove label (id=\(note.id)): \(error)")
+                                    }
                                 }
                             })
                         }
@@ -71,7 +75,11 @@ struct TagEditor: View {
                                     Task {
                                         var updated = note
                                         updated.labels.remove(last)
-                                        try? await store.upsert(updated)
+                                        do {
+                                            try await store.upsert(updated)
+                                        } catch {
+                                            print("[NV5] Failed to remove last label (id=\(note.id)): \(error)")
+                                        }
                                     }
                                 }
                                 return .handled
@@ -127,7 +135,11 @@ struct TagEditor: View {
         Task {
             var updated = note
             updated.labels.insert(trimmed)
-            try? await store.upsert(updated)
+            do {
+                try await store.upsert(updated)
+            } catch {
+                print("[NV5] Failed to add label (id=\(note.id)): \(error)")
+            }
             await MainActor.run { newLabel = "" }
         }
     }
@@ -141,7 +153,11 @@ struct TagEditor: View {
             } else {
                 updated.labels.insert(label)
             }
-            try? await store.upsert(updated)
+            do {
+                try await store.upsert(updated)
+            } catch {
+                print("[NV5] Failed to toggle label (id=\(note.id)): \(error)")
+            }
         }
     }
 }

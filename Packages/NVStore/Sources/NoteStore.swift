@@ -8,9 +8,12 @@ import Observation
 public final class NoteStore {
     public private(set) var notes: [Note] = [] {
         didSet {
-            // nvALT 风格：笔记变化时清空搜索缓存（避免缓存过期）
-            lastSearchQuery = ""
-            lastSearchResults = []
+            // nvALT 风格：只在笔记数量变化（新增/删除）时清空搜索缓存
+            // body/title 更新不影响搜索结果集合，保留缓存避免全量扫表
+            if oldValue.count != notes.count {
+                lastSearchQuery = ""
+                lastSearchResults = []
+            }
         }
     }
     public private(set) var archivedNotes: [Note] = []

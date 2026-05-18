@@ -9,6 +9,7 @@ public final class AppEnvironment {
 
     public let database: Database
     public let store: NoteStore
+    public let noteRepository: NoteRepository
 
     private init() {
         do {
@@ -20,7 +21,9 @@ public final class AppEnvironment {
             let dbURL = appSupport.appendingPathComponent("notes.sqlite")
             let db = try Database(url: dbURL)
             self.database = db
-            self.store = NoteStore(database: db)
+            let store = NoteStore(database: db)
+            self.store = store
+            self.noteRepository = MainActorNoteRepository(store: store, database: db)
         } catch {
             let dbPath = (try? FileManager.default.url(
                 for: .applicationSupportDirectory, in: .userDomainMask,

@@ -1,10 +1,8 @@
 import AppIntents
 import NVModel
-import NVStore
 import NVExport
 import Foundation
 import AppKit
-import GRDB
 
 struct NV5ShortcutsProvider: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
@@ -47,8 +45,8 @@ struct CreateNoteIntent: AppIntent {
             noteToUpsert.labels = Set(lbls)
         }
         
-        let store = await AppEnvironment.shared.store
-        try await store.upsert(noteToUpsert)
+        let repo = await MainActor.run { AppEnvironment.shared.noteRepository }
+        try await repo.upsert(noteToUpsert)
         
         return .result(value: NoteEntity(from: noteToUpsert))
     }
@@ -65,9 +63,8 @@ struct SearchNotesIntent: AppIntent {
     }
 
     func perform() async throws -> some IntentResult & ReturnsValue<[NoteEntity]> {
-        let notes = await MainActor.run {
-            AppEnvironment.shared.store.search(query: query)
-        }
+        let repo = await MainActor.run { AppEnvironment.shared.noteRepository }
+        let notes = await repo.search(query: query)
         return .result(value: notes.map { NoteEntity(from: $0) })
     }
 }
@@ -83,11 +80,9 @@ struct GetNoteIntent: AppIntent {
     }
 
     func perform() async throws -> some IntentResult & ReturnsValue<String> {
-        let fullNote = try await MainActor.run {
-            try AppEnvironment.shared.database.writer.read { db in
-                try Note.fetchOne(db, key: note.id)
-            }
-        }
+        guard let id = UUID(uuidString: note.id) else { throw IntentError.noteNotFound }
+        let repo = await MainActor.run { AppEnvironment.shared.noteRepository }
+        let fullNote = try await repo.fetchNote(id: id)
         guard let note = fullNote else { throw IntentError.noteNotFound }
         return .result(value: note.body)
     }
@@ -106,17 +101,15 @@ struct ExportNoteIntent: AppIntent {
     }
 
     func perform() async throws -> some IntentResult & ReturnsValue<IntentFile> {
-        let fullNote = try await MainActor.run {
-            try AppEnvironment.shared.database.writer.read { db in
-                try Note.fetchOne(db, key: note.id)
-            }
-        }
+        guard let id = UUID(uuidString: note.id) else { throw IntentError.noteNotFound }
+        let repo = await MainActor.run { AppEnvironment.shared.noteRepository }
+        let fullNote = try await repo.fetchNote(id: id)
         guard let note = fullNote else { throw IntentError.noteNotFound }
 
         let format = ExportFormat(rawValue: formatExt) ?? .markdown
         let dirURL = URL(fileURLWithPath: destinationPath)
 
-        let service = await MainActor.run { ExportService() }
+        let service = ExportService()
         let exportedURL = try await service.exportToFile(note, as: format, in: dirURL)
 
         return .result(value: IntentFile(fileURL: exportedURL))
@@ -136,21 +129,15 @@ struct ExportNotesByLabelIntent: AppIntent {
     }
 
     func perform() async throws -> some IntentResult & ReturnsValue<[IntentFile]> {
-        let allNotes = try await MainActor.run {
-            try AppEnvironment.shared.database.writer.read { db in
-                try Note.filter(Note.Columns.archived == false)
-                    .filter(Note.Columns.deletedLocally == false)
-                    .fetchAll(db)
-            }
-        }
-
+        let repo = await MainActor.run { AppEnvironment.shared.noteRepository }
+        let allNotes = try await repo.fetchAllActiveNotes()
         let filteredNotes = allNotes.filter { $0.labels.contains(label) }
         guard !filteredNotes.isEmpty else { return .result(value: []) }
 
         let format = ExportFormat(rawValue: formatExt) ?? .markdown
         let dirURL = URL(fileURLWithPath: destinationPath)
 
-        let service = await MainActor.run { ExportService() }
+        let service = ExportService()
         let exportedURLs = try await service.exportToDirectory(filteredNotes, as: format, in: dirURL)
 
         return .result(value: exportedURLs.map { IntentFile(fileURL: $0) })

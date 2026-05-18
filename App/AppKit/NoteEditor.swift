@@ -51,7 +51,10 @@ struct NoteEditor: NSViewRepresentable {
         context.coordinator.parent = self
 
         if context.coordinator.currentNoteID != noteID {
-            textView.window?.makeFirstResponder(nil)
+            // 只在编辑器持有焦点时才清空，避免抢走列表焦点导致方向键失效
+            if textView.window?.firstResponder == textView {
+                textView.window?.makeFirstResponder(nil)
+            }
             // 捕获并立即清除标志，避免泄漏到后续无关的笔记切换
             let shouldFocusAfterLoad = MainWindowController.shared.pendingFocusAfterLoad
             MainWindowController.shared.pendingFocusAfterLoad = false
@@ -77,8 +80,6 @@ struct NoteEditor: NSViewRepresentable {
                 }
             }
         } else {
-            // 笔记未切换：focusEditor() 已在 NVSearchBar 同步调用，消费标志防止泄漏
-            MainWindowController.shared.pendingFocusAfterLoad = false
             // 笔记未切换但 query 可能变化，需要重新高亮
             let firstMatchRange = context.coordinator.applyHighlight(query: highlightQuery)
             // nvALT 风格：query 变化时，如果有匹配，跳转到第一个匹配位置

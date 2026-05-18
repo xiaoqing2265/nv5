@@ -1,6 +1,6 @@
 import AppKit
 
-public enum CommandCategory: String, CaseIterable, Sendable {
+enum CommandCategory: String, CaseIterable, Sendable {
     case note = "笔记"
     case navigation = "导航"
     case editor = "编辑"
@@ -12,18 +12,18 @@ public enum CommandCategory: String, CaseIterable, Sendable {
 }
 
 @MainActor
-public struct CommandContext: Sendable {
-    public let coordinator: AppCoordinator
-    public let focus: FocusCoordinator
+struct CommandContext: Sendable {
+    let coordinator: AppCoordinator
+    let focus: FocusCoordinator
 
-    public init(coordinator: AppCoordinator, focus: FocusCoordinator) {
+    init(coordinator: AppCoordinator, focus: FocusCoordinator) {
         self.coordinator = coordinator
         self.focus = focus
     }
 }
 
 @MainActor
-public protocol AppCommand: Sendable {
+protocol AppCommand: Sendable {
     var id: String { get }
     var title: String { get }
     var subtitle: String? { get }

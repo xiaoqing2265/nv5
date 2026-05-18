@@ -48,6 +48,5 @@ struct LabelSidebar: View {
                 focusCoordinator.focus(.sidebar)
             }
         }
-        .focusRing()
     }
 }

@@ -1,5 +1,4 @@
 import SwiftUI
-import KeyboardShortcuts
 import NVSync
 import NVExport
 
@@ -11,7 +10,6 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     case notes = "笔记"
     case sync = "同步"
     case export = "导出"
-    case shortcuts = "快捷键"
 
     var id: String { rawValue }
 
@@ -25,7 +23,6 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .notes: return "note.text"
         case .sync: return "icloud"
         case .export: return "square.and.arrow.up"
-        case .shortcuts: return "keyboard"
         }
     }
 }
@@ -59,8 +56,6 @@ struct SettingsNavigationView: View {
                     SyncSettingsNew()
                 case .export:
                     ExportSettingsNew()
-                case .shortcuts:
-                    ShortcutsSettingsNew()
                 }
             }
             .navigationTitle(selectedCategory.displayName)
@@ -487,12 +482,6 @@ struct ExportSettingsNew: View {
 }
 
 // MARK: - 快捷键设置
-struct ShortcutsSettingsNew: View {
-    var body: some View {
-        ShortcutsSettingsView()
-    }
-}
-
 // MARK: - 数据模型和枚举
 
 enum AppLanguage: String, CaseIterable, Identifiable {

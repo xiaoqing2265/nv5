@@ -65,6 +65,10 @@ struct NoteListColumn: View {
                 get: { coordinator.query },
                 set: { coordinator.query = $0 }
             ),
+            typedText: Binding(
+                get: { coordinator.typedQuery },
+                set: { coordinator.typedQuery = $0 }
+            ),
             isFocused: focusCoordinator.current == .searchField,
             onSubmit: { searchBarReturn() },
             onArrowDown: { searchBarArrowDown() },

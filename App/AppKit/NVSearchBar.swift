@@ -5,6 +5,7 @@ import NVStore
 
 struct NVSearchBar: NSViewRepresentable {
     @Binding var text: String
+    @Binding var typedText: String  // nvALT 风格：用户实际输入，不含自动补全部分
     var isFocused: Bool
     var onSubmit: () -> Void
     var onArrowDown: () -> Void
@@ -79,12 +80,15 @@ struct NVSearchBar: NSViewRepresentable {
                         // 插入补全部分并选中（用户继续输入会覆盖）
                         fieldEditor.insertText(remaining, replacementRange: NSRange(location: cursorPos, length: 0))
                         fieldEditor.setSelectedRange(NSRange(location: cursorPos, length: remaining.count))
+                        // nvALT 风格：query 用完整标题过滤列表，typedText 保留用户实际输入用于高亮
+                        parent.typedText = newText
                         parent.text = matchedTitle
                         return
                     }
                 }
             }
 
+            parent.typedText = newText
             parent.text = newText
         }
 
@@ -106,6 +110,7 @@ struct NVSearchBar: NSViewRepresentable {
             } else if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
                 if !parent.text.isEmpty {
                     parent.text = ""
+                    parent.typedText = ""
                     escapeCount = 1
                 } else if escapeCount >= 1 {
                     parent.onEscapeEmpty()

@@ -97,6 +97,9 @@ public final class AppCoordinator {
     var store: NoteStore
     var sync: SyncCoordinator?
     var query: String = ""
+    /// nvALT 风格：用户实际输入的内容（不含自动补全部分），用于高亮
+    /// query 可能因自动补全变成完整标题，typedQuery 始终是用户真正键入的内容
+    var typedQuery: String = ""
     var selectedNoteID: UUID? {
         didSet {
             if let old = oldValue, old != selectedNoteID {
@@ -281,6 +284,7 @@ public final class AppCoordinator {
         self.selectedNoteID = note.id
         focusCoordinator?.focus(.editor)
         self.query = ""
+        self.typedQuery = ""
         return note.id
     }
 
@@ -293,6 +297,7 @@ public final class AppCoordinator {
             self.selectedNoteID = note.id
             focusCoordinator?.focus(.editor)
             self.query = ""
+            self.typedQuery = ""
         } catch {
             showError(error)
         }

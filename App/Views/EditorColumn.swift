@@ -50,7 +50,7 @@ struct EditorColumn: View {
                 initialBody: note.body,
                 initialAttributes: note.bodyAttributes,
                 initialSelection: note.lastSelectedRange,
-                highlightQuery: coordinator.query,
+                highlightQuery: coordinator.typedQuery,
                 focusRequest: focusCoordinator.current == .editor,
                 onEscape: { focusCoordinator.escapeToSearch() },
                 onCommit: { id, body, attrs, range in

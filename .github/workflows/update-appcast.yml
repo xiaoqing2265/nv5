@@ -61,10 +61,10 @@ jobs:
             .
           rm /tmp/sparkle_key
 
-          # Copy generated appcast to repo root
+          # Copy generated appcast to safe temp path instead of workspace root
           if [ -f "appcast.xml" ]; then
-            cp appcast.xml ${{ github.workspace }}/appcast.xml
-            echo "appcast.xml generated successfully"
+            cp appcast.xml /tmp/appcast.xml.final
+            echo "appcast.xml generated successfully in /tmp"
           else
             echo "ERROR: appcast.xml not generated"
             exit 1
@@ -78,10 +78,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # 1. Store the newly generated appcast.xml to a safe temp path
-          cp appcast.xml /tmp/appcast.xml.final
-
-          # 2. Check out or create the 'appcast' branch
+          # 1. Check out or create the 'appcast' branch
           git fetch origin appcast || true
           
           if git show-ref --quiet refs/remotes/origin/appcast; then
@@ -94,7 +91,7 @@ jobs:
             git rm -rf .
           fi
 
-          # 3. Bring the generated appcast.xml back
+          # 2. Bring the generated appcast.xml back
           cp /tmp/appcast.xml.final ./appcast.xml
 
           # 4. Check if there are actual changes

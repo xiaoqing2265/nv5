@@ -16,28 +16,17 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install xcodegen
-        run: brew install xcodegen
-
-      - name: Generate Xcode Project
-        run: xcodegen generate
-
-      - name: Locate Sparkle bin
+      - name: Setup Sparkle Binaries
         id: sparkle
         run: |
-          SPARKLE_BIN=$(find ~/Library/Developer/Xcode/DerivedData -name "sign_update" -type f -not -path "*/old_dsa_scripts/*" 2>/dev/null | head -n 1)
-          if [ -z "$SPARKLE_BIN" ]; then
-            SPARKLE_BIN=$(find ~/.cache -name "sign_update" -type f 2>/dev/null | head -n 1)
-          fi
-          if [ -z "$SPARKLE_BIN" ]; then
-            SPARKLE_BIN=$(find ~/Library/Caches/org.swift.swiftpm -name "sign_update" -type f 2>/dev/null | head -n 1)
-          fi
-          if [ -z "$SPARKLE_BIN" ]; then
-            echo "ERROR: sign_update not found"
+          curl -L -O https://github.com/sparkle-project/Sparkle/releases/download/2.9.1/Sparkle-2.9.1.tar.xz
+          tar -xf Sparkle-2.9.1.tar.xz
+          if [ -f "./bin/generate_appcast" ]; then
+            echo "bin_dir=$(pwd)/bin" >> $GITHUB_OUTPUT
+          else
+            echo "ERROR: generate_appcast not found in Sparkle distribution"
             exit 1
           fi
-          echo "Found sign_update at: $SPARKLE_BIN"
-          echo "bin_dir=$(dirname $SPARKLE_BIN)" >> $GITHUB_OUTPUT
 
       - name: Get Latest Release
         id: latest_release

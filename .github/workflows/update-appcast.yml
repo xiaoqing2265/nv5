@@ -38,6 +38,7 @@ jobs:
       - name: Generate and Update appcast.xml
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [ -z "$SPARKLE_PRIVATE_KEY" ]; then
             echo "WARNING: SPARKLE_PRIVATE_KEY not set, skipping appcast update"

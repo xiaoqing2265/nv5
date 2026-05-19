@@ -84,14 +84,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Ensure we're on main branch with latest changes
-          git fetch origin main
-          git checkout main
-          git pull origin main --rebase
-
-          # Add and commit
+          # Add and commit first
           git add appcast.xml
           git commit -m "chore: update appcast for ${{ steps.latest_release.outputs.tag }}"
+
+          # Now pull and rebase on top of main
+          git pull origin main --rebase
 
           # Push with retry logic
           for i in {1..3}; do

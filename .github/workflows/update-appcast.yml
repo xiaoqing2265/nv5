@@ -61,6 +61,12 @@ jobs:
             .
           rm /tmp/sparkle_key
 
+          # Post-process appcast.xml to dynamically insert the tag folder into the download URLs
+          if [ -f "appcast.xml" ]; then
+            echo "Post-processing appcast.xml to fix download URLs..."
+            python3 -c "import re, sys; p = sys.argv[1]; c = open(p).read(); c = re.sub(r'releases/download/NV5-([v]?[0-9a-zA-Z\.\-]+)\.dmg', r'releases/download/\1/NV5-\1.dmg', c); open(p, 'w').write(c)" appcast.xml
+          fi
+
           # Copy generated appcast to safe temp path instead of workspace root
           if [ -f "appcast.xml" ]; then
             cp appcast.xml /tmp/appcast.xml.final

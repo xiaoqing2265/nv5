@@ -36,6 +36,14 @@ struct EditorColumn: View {
                     // 切换笔记时加载完整正文；id 不变（仅内容/标题变化）不会重跑，避免编辑中重载。
                     .task(id: id) {
                         fullNote = await store.fullNote(id: id)
+                        // fullNote 异步加载使编辑器比 store.notes 晚一拍渲染，会错过
+                        // handleNotesChange / 新建笔记时早发的 focusEditor()。编辑器渲染后补一次
+                        // 聚焦——仅当逻辑焦点本就应在编辑器（新建、或按回车进入编辑），避免误抢列表焦点。
+                        if focusCoordinator.current == .editor {
+                            DispatchQueue.main.async {
+                                MainWindowController.shared.focusEditor()
+                            }
+                        }
                     }
             } else {
                 EmptyStateView(

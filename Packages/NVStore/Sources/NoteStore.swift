@@ -34,7 +34,8 @@ public final class NoteStore {
     }
 
     /// 轻量观察：只查摘要列（body 截断 200 字符，不含 bodyAttributes），降低内存和 diff 开销
-    private static let summarySQL = """
+    // nonisolated：常量 SQL，需可从后台的 @Sendable 观察闭包引用（Swift 6 严格并发）。
+    private nonisolated static let summarySQL = """
         SELECT id, title, substr(body, 1, 200) AS body, NULL AS bodyAttributes,
                labelsJSON, createdAt, modifiedAt, lastSelectedLocation, lastSelectedLength,
                isEncrypted, etag, remotePath, lastSyncedAt, localDirty, deletedLocally, archived
@@ -65,7 +66,7 @@ public final class NoteStore {
         }
     }
 
-    private static let archivedSummarySQL = """
+    private nonisolated static let archivedSummarySQL = """
         SELECT id, title, substr(body, 1, 200) AS body, NULL AS bodyAttributes,
                labelsJSON, createdAt, modifiedAt, lastSelectedLocation, lastSelectedLength,
                isEncrypted, etag, remotePath, lastSyncedAt, localDirty, deletedLocally, archived

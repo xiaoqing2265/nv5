@@ -21,7 +21,10 @@ final class URLSchemeHandler {
             Task { await coordinator.newNoteFromURL(title: title, body: body) }
         case "search":
             let rawQ = comp?.queryItems?.first(where: { $0.name == "q" })?.value ?? ""
-            coordinator.query = rawQ.removingPercentEncoding ?? rawQ
+            let decoded = rawQ.removingPercentEncoding ?? rawQ
+            // 设为检索意图（驱动过滤）并同步显示。
+            coordinator.typedQuery = decoded
+            coordinator.query = decoded
             coordinator.focusSearch()
         case "open":
             if let idStr = comp?.queryItems?.first(where: { $0.name == "id" })?.value,

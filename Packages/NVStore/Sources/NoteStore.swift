@@ -6,17 +6,12 @@ import Observation
 @Observable
 @MainActor
 public final class NoteStore {
-    public private(set) var notes: [Note] = [] {
+    public private(set) var notes: [NoteSummary] = [] {
         didSet {
-            // nvALT 风格：只在笔记数量变化（新增/删除）时清空搜索缓存
-            // body/title 更新不影响搜索结果集合，保留缓存避免全量扫表
-            if oldValue.count != notes.count {
-                lastSearchQuery = ""
-                lastSearchResults = []
-            }
+            clearSearchCache()
         }
     }
-    public private(set) var archivedNotes: [Note] = []
+    public private(set) var archivedNotes: [NoteSummary] = []
     public private(set) var observationError: Error?
 
     private let database: Database
@@ -25,7 +20,12 @@ public final class NoteStore {
 
     // nvALT 风格：增量搜索缓存
     private var lastSearchQuery: String = ""
-    private var lastSearchResults: [Note] = []
+    private var lastSearchResults: [NoteSummary] = []
+
+    private func clearSearchCache() {
+        lastSearchQuery = ""
+        lastSearchResults = []
+    }
 
     public init(database: Database) {
         self.database = database
@@ -33,21 +33,27 @@ public final class NoteStore {
         startArchivedObserving()
     }
 
+    /// 轻量观察：只查摘要列（body 截断 200 字符，不含 bodyAttributes），降低内存和 diff 开销
+    private static let summarySQL = """
+        SELECT id, title, substr(body, 1, 200) AS body, NULL AS bodyAttributes,
+               labelsJSON, createdAt, modifiedAt, lastSelectedLocation, lastSelectedLength,
+               isEncrypted, etag, remotePath, lastSyncedAt, localDirty, deletedLocally, archived
+        FROM note WHERE deletedLocally = 0 AND archived = 0
+        ORDER BY modifiedAt DESC
+        """
+
     private func startObserving() {
         let writer = database.writer
         observationTask = Task { [weak self] in
             let observation = ValueObservation.tracking { db in
-                try Note
-                    .filter(Note.Columns.deletedLocally == false)
-                    .filter(Note.Columns.archived == false)
-                    .order(Note.Columns.modifiedAt.desc)
-                    .fetchAll(db)
+                try Note.fetchAll(db, sql: NoteStore.summarySQL)
             }
 
             do {
                 for try await notes in observation.values(in: writer, scheduling: .async(onQueue: DispatchQueue.global(qos: .userInitiated))) {
+                    let summaries = notes.map(NoteSummary.init(from:))
                     await MainActor.run {
-                        self?.notes = notes
+                        self?.notes = summaries
                         self?.observationError = nil
                     }
                 }
@@ -59,21 +65,26 @@ public final class NoteStore {
         }
     }
 
+    private static let archivedSummarySQL = """
+        SELECT id, title, substr(body, 1, 200) AS body, NULL AS bodyAttributes,
+               labelsJSON, createdAt, modifiedAt, lastSelectedLocation, lastSelectedLength,
+               isEncrypted, etag, remotePath, lastSyncedAt, localDirty, deletedLocally, archived
+        FROM note WHERE deletedLocally = 0 AND archived = 1
+        ORDER BY modifiedAt DESC
+        """
+
     private func startArchivedObserving() {
         let writer = database.writer
         archivedObservationTask = Task { [weak self] in
             let observation = ValueObservation.tracking { db in
-                try Note
-                    .filter(Note.Columns.deletedLocally == false)
-                    .filter(Note.Columns.archived == true)
-                    .order(Note.Columns.modifiedAt.desc)
-                    .fetchAll(db)
+                try Note.fetchAll(db, sql: NoteStore.archivedSummarySQL)
             }
 
             do {
                 for try await archived in observation.values(in: writer, scheduling: .async(onQueue: DispatchQueue.global(qos: .userInitiated))) {
+                    let summaries = archived.map(NoteSummary.init(from:))
                     await MainActor.run {
-                        self?.archivedNotes = archived
+                        self?.archivedNotes = summaries
                     }
                 }
             } catch {
@@ -162,6 +173,26 @@ public final class NoteStore {
         }
     }
 
+    public func updateBodyText(id: UUID, body: String, selection: NSRange?) async throws {
+        try await database.writer.write { db in
+            guard var note = try Note.fetchOne(db, key: id.uuidString) else { return }
+            note.body = body
+            note.lastSelectedRange = selection
+            note.modifiedAt = Date()
+            note.localDirty = true
+            try note.update(db)
+        }
+    }
+
+    /// 读取完整笔记（含未截断 body 与 bodyAttributes），用于编辑等需要完整内容的场景。
+    /// 内存中的 notes/archivedNotes 与 search 结果都是摘要投影（body 截断 200 字、
+    /// bodyAttributes 为 NULL），直接拿去编辑会在保存时用截断内容覆盖完整正文，造成数据丢失。
+    public func fullNote(id: UUID) async -> Note? {
+        try? await database.writer.read { db in
+            try Note.fetchOne(db, key: id.uuidString)
+        }
+    }
+
     public func updateTitle(id: UUID, title: String) async throws {
         try await database.writer.write { db in
             guard var note = try Note.fetchOne(db, key: id.uuidString) else { return }
@@ -181,54 +212,75 @@ public final class NoteStore {
         }
     }
 
-    public func search(query: String, includeArchived: Bool = false) -> [Note] {
+    /// 搜索笔记：通过数据库 LIKE 查询全文（因为内存中 notes 只含截断 body）
+    /// 结果同样为摘要级别（body 截断 200 字符，不含 bodyAttributes）
+    public func search(query: String, includeArchived: Bool = false) async -> [NoteSummary] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        let targetNotes: [Note]
-        if includeArchived {
-            targetNotes = (try? database.writer.read { db in
-                try Note.filter(Note.Columns.deletedLocally == false).fetchAll(db)
-            }) ?? notes
-        } else {
-            targetNotes = notes
-        }
-
         guard !trimmed.isEmpty else {
-            // 清空缓存
-            lastSearchQuery = ""
-            lastSearchResults = []
-            return targetNotes
+            clearSearchCache()
+            return includeArchived ? notes + archivedNotes : notes
         }
 
         // nvALT 风格：增量搜索优化
-        // Phase 1: 判断是否可以在当前结果中继续搜索
-        let searchBase: [Note]
         let lowercaseTrimmed = trimmed.lowercased()
         let lowercaseLastQuery = lastSearchQuery.lowercased()
 
+        // 如果是前缀扩展且有缓存，直接在缓存中过滤（缓存已是摘要级别，title 匹配即可）
         if !includeArchived &&
            !lastSearchQuery.isEmpty &&
            lowercaseTrimmed.hasPrefix(lowercaseLastQuery) &&
            !lastSearchResults.isEmpty {
-            // 新词是旧词的前缀，在当前结果中继续搜索（增量）
-            searchBase = lastSearchResults
-        } else {
-            // 新词不是旧词的前缀，或缓存为空，从所有笔记开始（全量）
-            searchBase = targetNotes
-        }
-
-        // Phase 2: 实际搜索
-        let tokens = trimmed.split(separator: " ").map(String.init)
-
-        let matched = searchBase.filter { note in
-            tokens.allSatisfy { token in
-                note.title.range(of: token, options: .caseInsensitive) != nil
-                || note.body.range(of: token, options: .caseInsensitive) != nil
-                || note.labels.contains { $0.range(of: token, options: .caseInsensitive) != nil }
+            let tokens = trimmed.split(separator: " ").map(String.init)
+            let narrowed = lastSearchResults.filter { note in
+                tokens.allSatisfy { token in
+                    note.title.range(of: token, options: .caseInsensitive) != nil
+                    || note.body.range(of: token, options: .caseInsensitive) != nil
+                    || note.labels.contains { $0.range(of: token, options: .caseInsensitive) != nil }
+                }
             }
+            lastSearchQuery = trimmed
+            lastSearchResults = narrowed
+            return narrowed
         }
 
-        let sorted = matched.sorted { lhs, rhs in
+        // 全量搜索：通过数据库 LIKE 查询（body 可能很长，不适合内存扫描）
+        let tokens = trimmed.split(separator: " ").map(String.init)
+        let results: [Note] = (try? await database.writer.read { db in
+            // 构建 WHERE 子句：每个 token 必须在 title/body/labelsJSON 中出现
+            var conditions: [String] = ["deletedLocally = 0"]
+            if !includeArchived {
+                conditions.append("archived = 0")
+            }
+            var arguments: [String] = []
+            for token in tokens {
+                // 转义 LIKE 通配符（\ % _），按字面匹配——查询里的 % 和 _ 应作为
+                // 普通字符，不能被当作通配或被删除（删除会改变语义，漏掉含下划线/百分号的笔记）。
+                // SQLite 的 LIKE 对 ASCII 默认大小写不敏感，无需额外 COLLATE NOCASE。
+                let escaped = token
+                    .replacingOccurrences(of: "\\", with: "\\\\")
+                    .replacingOccurrences(of: "%", with: "\\%")
+                    .replacingOccurrences(of: "_", with: "\\_")
+                let like = "%\(escaped)%"
+                conditions.append("(title LIKE ? ESCAPE '\\' OR body LIKE ? ESCAPE '\\' OR labelsJSON LIKE ? ESCAPE '\\')")
+                arguments.append(contentsOf: [like, like, like])
+            }
+            let whereClause = conditions.joined(separator: " AND ")
+            let sql = """
+                SELECT id, title, substr(body, 1, 200) AS body, NULL AS bodyAttributes,
+                       labelsJSON, createdAt, modifiedAt, lastSelectedLocation, lastSelectedLength,
+                       isEncrypted, etag, remotePath, lastSyncedAt, localDirty, deletedLocally, archived
+                FROM note WHERE \(whereClause)
+                ORDER BY modifiedAt DESC
+                """
+            return try Note.fetchAll(db, sql: sql, arguments: StatementArguments(arguments))
+        }) ?? []
+
+        // 转为摘要（DB 投影已截断 body、置空 bodyAttributes）
+        let summaries = results.map(NoteSummary.init(from:))
+
+        // 标题优先排序
+        let sorted = summaries.sorted { lhs, rhs in
             let lhsTitleHit = tokens.allSatisfy {
                 lhs.title.range(of: $0, options: .caseInsensitive) != nil
             }
@@ -239,7 +291,7 @@ public final class NoteStore {
             return lhs.modifiedAt > rhs.modifiedAt
         }
 
-        // Phase 3: 缓存结果（只缓存非归档搜索）
+        // 缓存结果（只缓存非归档搜索）
         if !includeArchived {
             lastSearchQuery = trimmed
             lastSearchResults = sorted

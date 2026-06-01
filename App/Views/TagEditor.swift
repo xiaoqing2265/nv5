@@ -11,10 +11,24 @@ struct TagEditor: View {
     @State private var newLabel: String = ""
     @FocusState private var inputFocused: Bool
 
-    private var currentNote: Note? {
+    private var currentNote: NoteSummary? {
         guard let id = coordinator.selectedNoteID else { return nil }
         return store.notes.first(where: { $0.id == id })
             ?? store.archivedNotes.first(where: { $0.id == id })
+    }
+
+    /// 标签写回必须基于【完整 Note】：store.notes 是摘要投影，直接 upsert 摘要会把截断正文写回数据库。
+    private func updateLabels(_ transform: @escaping (inout Set<String>) -> Void) {
+        guard let id = coordinator.selectedNoteID else { return }
+        Task {
+            guard var full = await store.fullNote(id: id) else { return }
+            transform(&full.labels)
+            do {
+                try await store.upsert(full)
+            } catch {
+                print("[NV5] Failed to update labels (id=\(id)): \(error)")
+            }
+        }
     }
 
     private var allLabels: [String] {
@@ -48,15 +62,7 @@ struct TagEditor: View {
                     FlowLayout {
                         ForEach(Array(note.labels), id: \.self) { label in
                             LabelChip(label, style: .removable {
-                                Task {
-                                    var updated = note
-                                    updated.labels.remove(label)
-                                    do {
-                                        try await store.upsert(updated)
-                                    } catch {
-                                        print("[NV5] Failed to remove label (id=\(note.id)): \(error)")
-                                    }
-                                }
+                                updateLabels { $0.remove(label) }
                             })
                         }
                     }
@@ -72,15 +78,7 @@ struct TagEditor: View {
                         .onKeyPress(.delete) {
                             if newLabel.isEmpty, let note = currentNote, !note.labels.isEmpty {
                                 if let last = note.labels.sorted().last {
-                                    Task {
-                                        var updated = note
-                                        updated.labels.remove(last)
-                                        do {
-                                            try await store.upsert(updated)
-                                        } catch {
-                                            print("[NV5] Failed to remove last label (id=\(note.id)): \(error)")
-                                        }
-                                    }
+                                    updateLabels { $0.remove(last) }
                                 }
                                 return .handled
                             }
@@ -131,32 +129,18 @@ struct TagEditor: View {
 
     private func addLabel() {
         let trimmed = newLabel.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty, let note = currentNote else { return }
-        Task {
-            var updated = note
-            updated.labels.insert(trimmed)
-            do {
-                try await store.upsert(updated)
-            } catch {
-                print("[NV5] Failed to add label (id=\(note.id)): \(error)")
-            }
-            await MainActor.run { newLabel = "" }
-        }
+        guard !trimmed.isEmpty, currentNote != nil else { return }
+        updateLabels { $0.insert(trimmed) }
+        newLabel = ""
     }
 
     private func toggleLabel(_ label: String) {
-        guard let note = currentNote else { return }
-        Task {
-            var updated = note
-            if updated.labels.contains(label) {
-                updated.labels.remove(label)
+        guard currentNote != nil else { return }
+        updateLabels { labels in
+            if labels.contains(label) {
+                labels.remove(label)
             } else {
-                updated.labels.insert(label)
-            }
-            do {
-                try await store.upsert(updated)
-            } catch {
-                print("[NV5] Failed to toggle label (id=\(note.id)): \(error)")
+                labels.insert(label)
             }
         }
     }

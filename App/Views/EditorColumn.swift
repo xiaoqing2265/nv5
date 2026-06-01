@@ -8,6 +8,9 @@ struct EditorColumn: View {
     @Environment(NoteStore.self) private var store
     @Environment(FocusCoordinator.self) private var focusCoordinator
     @FocusState private var editorFocused: Bool
+    // 完整笔记（未截断 body + bodyAttributes），直接查库。store.notes 是摘要投影，
+    // 不能用于编辑，否则保存会用截断内容覆盖完整正文。
+    @State private var fullNote: Note?
 
     var body: some View {
         Group {
@@ -18,8 +21,8 @@ struct EditorColumn: View {
                     description: "可以在左侧列表执行批量操作。"
                 )
             } else if let id = coordinator.selectedNoteID,
-               let note = store.notes.first(where: { $0.id == id }) {
-                editorView(for: note)
+               let summary = store.notes.first(where: { $0.id == id }) {
+                editorView(summary: summary, id: id)
                     .onChange(of: focusCoordinator.current) { _, new in
                         editorFocused = (new == .editor)
                     }
@@ -30,6 +33,10 @@ struct EditorColumn: View {
                     }
                     .accessibilityLabel("编辑器")
                     .accessibilityElement(children: .contain)
+                    // 切换笔记时加载完整正文；id 不变（仅内容/标题变化）不会重跑，避免编辑中重载。
+                    .task(id: id) {
+                        fullNote = await store.fullNote(id: id)
+                    }
             } else {
                 EmptyStateView(
                     title: "选择或创建笔记",
@@ -40,32 +47,59 @@ struct EditorColumn: View {
         }
     }
 
-    private func editorView(for note: Note) -> some View {
+    @ViewBuilder
+    private func editorView(summary: NoteSummary, id: UUID) -> some View {
         VStack(spacing: 0) {
-            TitleBar(note: note)
+            TitleBar(note: summary)   // 标题/标签未被截断，用摘要保持响应式更新
             Divider()
-            NoteEditor(
-                noteID: note.id,
-                initialBody: note.body,
-                initialAttributes: note.bodyAttributes,
-                initialSelection: note.lastSelectedRange,
-                highlightQuery: coordinator.typedQuery,
-                focusRequest: focusCoordinator.current == .editor,
-                onEscape: { focusCoordinator.escapeToSearch() },
-                onCommit: { id, body, attrs, range in
-                    Task {
+            if let full = fullNote, full.id == id {
+                // 契约：编辑器只接收来自 store.fullNote(id:) 的完整正文。
+                // summary（store.notes 投影）body 被截断、bodyAttributes 为 NULL，
+                // 若拿它喂编辑器会用截断内容覆盖完整正文。此断言在 Debug 下拦截误用。
+                let _ = assert(full.id == summary.id, "fullNote 与 summary 的 id 必须一致，否则正文加载错位")
+                NoteEditor(
+                    noteID: full.id,
+                    initialBody: full.body,
+                    initialAttributes: full.bodyAttributes,
+                    initialSelection: full.lastSelectedRange,
+                    highlightQuery: coordinator.typedQuery,
+                    focusRequest: focusCoordinator.current == .editor,
+                    onEscape: { focusCoordinator.escapeToSearch() },
+                    onTextCommit: { id, body, range in
+                        Task {
+                            do {
+                                try await store.updateBodyText(id: id, body: body, selection: range)
+                            } catch {
+                                coordinator.showError(error)
+                            }
+                        }
+                    },
+                    onRichCommit: { id, body, attrs, range in
+                        Task {
+                            do {
+                                try await store.updateBody(
+                                    id: id, body: body, attributes: attrs, selection: range
+                                )
+                            } catch {
+                                coordinator.showError(error)
+                            }
+                        }
+                    },
+                    returnInListPublisher: focusCoordinator.returnInListSubject.eraseToAnyPublisher(),
+                    // 可等待落盘：终止/同步前 flush 通过它 await 到 DB 写入完成（持久化保证）。
+                    onFlush: { id, body, attrs, range in
                         do {
-                            try await store.updateBody(
-                                id: id, body: body, attributes: attrs, selection: range
-                            )
+                            try await store.updateBody(id: id, body: body, attributes: attrs, selection: range)
                         } catch {
                             coordinator.showError(error)
                         }
                     }
-                },
-                returnInListPublisher: focusCoordinator.returnInListSubject.eraseToAnyPublisher()
-            )
-            .focused($editorFocused)
+                )
+                .focused($editorFocused)
+            } else {
+                // 完整正文加载中（本地查库，近乎瞬时）。不渲染编辑器以免加载到截断内容。
+                Color.clear
+            }
         }
     }
 }
@@ -73,7 +107,7 @@ struct EditorColumn: View {
 struct TitleBar: View {
     @Environment(AppCoordinator.self) private var coordinator
     @Environment(NoteStore.self) private var store
-    let note: Note
+    let note: NoteSummary
     @State private var title: String = ""
     @State private var labelInput: String = ""
     @FocusState private var titleFocused: Bool
@@ -107,15 +141,7 @@ struct TitleBar: View {
             HStack(spacing: 6) {
                 ForEach(Array(note.labels), id: \.self) { label in
                     LabelChip(label, style: .removable {
-                        Task {
-                            var updated = note
-                            updated.labels.remove(label)
-                            do {
-                                try await store.upsert(updated)
-                            } catch {
-                                coordinator.showError(error)
-                            }
-                        }
+                        updateLabels { $0.remove(label) }
                     })
                 }
                 TextField("Add label…", text: $labelInput)
@@ -158,15 +184,21 @@ struct TitleBar: View {
     private func addLabel() {
         let trimmed = labelInput.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
+        updateLabels { $0.insert(trimmed) }
+        labelInput = ""
+    }
+
+    /// 标签写回必须基于【完整 Note】：note 是摘要投影，直接 upsert 摘要会把截断正文写回数据库。
+    private func updateLabels(_ transform: @escaping (inout Set<String>) -> Void) {
+        let id = note.id
         Task {
-            var updated = note
-            updated.labels.insert(trimmed)
+            guard var full = await store.fullNote(id: id) else { return }
+            transform(&full.labels)
             do {
-                try await store.upsert(updated)
+                try await store.upsert(full)
             } catch {
                 coordinator.showError(error)
             }
-            await MainActor.run { labelInput = "" }
         }
     }
 }

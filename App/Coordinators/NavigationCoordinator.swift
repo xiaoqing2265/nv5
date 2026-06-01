@@ -20,7 +20,7 @@ final class NavigationCoordinator {
         history.goForward()
     }
 
-    func previousNote(existingIn notes: [Note], archived: [Note]) -> UUID? {
+    func previousNote(existingIn notes: [NoteSummary], archived: [NoteSummary]) -> UUID? {
         guard let prev = previousNoteID else { return nil }
         let exists = notes.contains(where: { $0.id == prev })
             || archived.contains(where: { $0.id == prev })

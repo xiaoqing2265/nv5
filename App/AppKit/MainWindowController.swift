@@ -20,6 +20,13 @@ final class MainWindowController {
     /// 用于处理 searchBarReturn 触发笔记切换时的时序问题
     var pendingFocusAfterLoad = false
 
+    /// 当前活跃编辑器的 flush 闭包（nvALT 风格的 flushAllNoteChanges 钩子）。
+    /// App 层（终止、同步前）通过它把编辑器内存中未保存的击键提交到 DB 并【等待落盘】。
+    /// 用闭包桥接，避免本控制器依赖 NoteEditor.Coordinator 的具体类型。
+    private var activeEditorFlush: (() async -> Void)?
+    /// 注册者标识：保证旧编辑器 deinit 时不会误清掉新编辑器刚注册的闭包。
+    private var flushOwnerID: ObjectIdentifier?
+
     private init() {}
 
     // MARK: - 注册组件（在 makeNSView 时调用）
@@ -32,6 +39,25 @@ final class MainWindowController {
         if self.editorTextView === textView {
             self.editorTextView = nil
         }
+    }
+
+    func registerEditorFlush(ownerID: ObjectIdentifier, _ flush: @escaping () async -> Void) {
+        self.activeEditorFlush = flush
+        self.flushOwnerID = ownerID
+    }
+
+    /// 仅当请求者就是当前注册者时才清空——避免旧编辑器异步 deinit 误清新编辑器的注册。
+    func clearEditorFlush(ownerID: ObjectIdentifier) {
+        if flushOwnerID == ownerID {
+            self.activeEditorFlush = nil
+            self.flushOwnerID = nil
+        }
+    }
+
+    /// 提交当前编辑器内存中未保存的内容到 DB，并【等待写入完成】才返回。
+    /// 这是 nvALT flushAllNoteChanges 的等价物：终止/同步前调用，保证不丢未保存击键。
+    func flushActiveEditor() async {
+        await activeEditorFlush?()
     }
 
     func registerSearchField(_ field: NSSearchField) {

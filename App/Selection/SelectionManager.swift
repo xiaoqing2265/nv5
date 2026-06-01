@@ -7,7 +7,7 @@ import NVModel
 final class SelectionManager {
     func extendSelection(
         to noteID: UUID,
-        allNotes: [Note],
+        allNotes: [NoteSummary],
         anchorNoteID: inout UUID?,
         selectedNoteIDs: inout Set<UUID>,
         selectedNoteID: inout UUID?
@@ -25,7 +25,7 @@ final class SelectionManager {
         selectedNoteID = noteID
     }
 
-    func selectAllNotes(in notes: [Note], anchorNoteID: inout UUID?, selectedNoteIDs: inout Set<UUID>) {
+    func selectAllNotes(in notes: [NoteSummary], anchorNoteID: inout UUID?, selectedNoteIDs: inout Set<UUID>) {
         selectedNoteIDs = Set(notes.map { $0.id })
         anchorNoteID = notes.first?.id
     }

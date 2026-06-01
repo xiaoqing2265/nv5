@@ -99,8 +99,9 @@ struct NVSearchBar: NSViewRepresentable {
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
             if commandSelector == #selector(NSResponder.insertNewline(_:)) {
-                if !parent.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    historyStore.record(parent.text)
+                // 记录真实检索意图，而非自动补全后的标题。
+                if !parent.typedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    historyStore.record(parent.typedText)
                 }
                 historyIndex = -1
                 parent.onSubmit()
@@ -125,7 +126,9 @@ struct NVSearchBar: NSViewRepresentable {
                     let history = historyStore.history()
                     guard !history.isEmpty else { return false }
                     historyIndex = min(historyIndex + 1, history.count - 1)
-                    parent.text = history[safe: historyIndex] ?? ""
+                    let restored = history[safe: historyIndex] ?? ""
+                    parent.typedText = restored
+                    parent.text = restored
                     return true
                 }
                 parent.onArrowUp()
@@ -136,9 +139,12 @@ struct NVSearchBar: NSViewRepresentable {
                     guard !history.isEmpty else { return false }
                     if historyIndex > 0 {
                         historyIndex -= 1
-                        parent.text = history[safe: historyIndex] ?? ""
+                        let restored = history[safe: historyIndex] ?? ""
+                        parent.typedText = restored
+                        parent.text = restored
                     } else if historyIndex == 0 {
                         historyIndex = -1
+                        parent.typedText = ""
                         parent.text = ""
                     }
                     return true

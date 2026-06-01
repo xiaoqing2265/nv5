@@ -11,33 +11,39 @@ struct NoteListColumn: View {
     @FocusState private var listFocused: Bool
     @State private var cmdACancellable: Any?
     @State private var previewNote: Note?
+    // 过滤结果由异步任务填充：store.search 命中数据库全文，天然异步。摘要级别（列表展示足够）。
+    @State private var filteredNotes: [NoteSummary] = []
+    @State private var filterTask: Task<Void, Never>?
 
-    private var filteredNotes: [Note] {
+    /// 唯一的检索意图来源 = `coordinator.typedQuery`（用户真实键入的关键词）。
+    /// 列表过滤、新建笔记、编辑器高亮全部读它；`coordinator.query` 仅作搜索框显示，
+    /// 不参与任何语义判断——这从结构上杜绝了「自动补全标题污染过滤器」导致的关键词消失。
+    private func calculateFilteredNotes() async -> [NoteSummary] {
+        let intent = coordinator.typedQuery
+
         if selectedItem == .archived {
-            if coordinator.query.isEmpty {
-                return store.archivedNotes
-            }
-            return searchNotes(store.archivedNotes, query: coordinator.query)
+            if intent.isEmpty { return store.archivedNotes }
+            return await store.search(query: intent, includeArchived: true)
+                .filter { $0.archived }
         }
 
-        let base: [Note] = coordinator.query.isEmpty
+        let base: [NoteSummary] = intent.isEmpty
             ? store.notes
-            : store.search(query: coordinator.query, includeArchived: false)
-
-        switch selectedItem {
-        case .all, .archived: return base
-        case .label(let label): return base.filter { $0.labels.contains(label) }
-        }
+            : await store.search(query: intent, includeArchived: false)
+        return NoteListFilter.scope(base, to: selectedItem)
     }
 
-    private func searchNotes(_ notes: [Note], query: String) -> [Note] {
-        let tokens = query.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: " ").map(String.init)
-        return notes.filter { note in
-            tokens.allSatisfy { token in
-                note.title.range(of: token, options: .caseInsensitive) != nil
-                || note.body.range(of: token, options: .caseInsensitive) != nil
-                || note.labels.contains { $0.range(of: token, options: .caseInsensitive) != nil }
+    /// 重新计算过滤结果。`debounce` 用于键入场景，避免逐字符触发数据库查询。
+    private func scheduleFilterUpdate(debounce: Bool) {
+        filterTask?.cancel()
+        filterTask = Task { @MainActor in
+            if debounce {
+                try? await Task.sleep(nanoseconds: 150_000_000)
+                guard !Task.isCancelled else { return }
             }
+            let result = await calculateFilteredNotes()
+            guard !Task.isCancelled else { return }
+            filteredNotes = result
         }
     }
 
@@ -57,6 +63,15 @@ struct NoteListColumn: View {
                 }
             }
         }
+        .onAppear { scheduleFilterUpdate(debounce: false) }
+        .onDisappear {
+            filterTask?.cancel()
+            filterTask = nil
+        }
+        .onChange(of: coordinator.typedQuery) { _, _ in scheduleFilterUpdate(debounce: true) }
+        .onChange(of: selectedItem) { _, _ in scheduleFilterUpdate(debounce: false) }
+        .onChange(of: store.notes) { _, _ in scheduleFilterUpdate(debounce: false) }
+        .onChange(of: store.archivedNotes) { _, _ in scheduleFilterUpdate(debounce: false) }
     }
 
     private var searchBar: some View {
@@ -198,8 +213,9 @@ struct NoteListColumn: View {
             return .ignored
         }
 
-        // 转发到搜索框：清空当前 query，添加新字符，聚焦搜索框
-        coordinator.query = String(char)
+        // 转发到搜索框：追加到现有检索意图（绝不覆盖整串），显示同步为意图本身。
+        coordinator.typedQuery += String(char)
+        coordinator.query = coordinator.typedQuery
         MainWindowController.shared.focusSearchField()
         focusCoordinator.focus(.searchField)
 
@@ -208,11 +224,13 @@ struct NoteListColumn: View {
 
     private func onSpace(_ event: KeyPress) -> KeyPress.Result {
         guard listFocused, let id = coordinator.selectedNoteID else { return .ignored }
-        if let note = store.notes.first(where: { $0.id == id }) ?? store.archivedNotes.first(where: { $0.id == id }) {
-            previewNote = note
-            return .handled
+        guard store.notes.contains(where: { $0.id == id })
+              || store.archivedNotes.contains(where: { $0.id == id }) else { return .ignored }
+        // 预览展示完整正文（store.notes 是摘要、body 截断），按 id 取完整 Note。
+        Task {
+            if let full = await store.fullNote(id: id) { previewNote = full }
         }
-        return .ignored
+        return .handled
     }
 
     @ViewBuilder
@@ -245,7 +263,7 @@ struct NoteListColumn: View {
         }
     }
 
-    private func noteRowWithMenu(_ note: Note) -> some View {
+    private func noteRowWithMenu(_ note: NoteSummary) -> some View {
         NoteRow(note: note)
             .tag(Optional(note.id))
             .contextMenu {
@@ -316,7 +334,7 @@ struct NoteListColumn: View {
         coordinator.extendSelection(to: targetNote.id, allNotes: filteredNotes)
     }
 
-    private func handleNotesChange(_ newNotes: [Note], proxy: ScrollViewProxy) {
+    private func handleNotesChange(_ newNotes: [NoteSummary], proxy: ScrollViewProxy) {
         if let createdID = coordinator.recentlyCreatedNoteID {
             if newNotes.contains(where: { $0.id == createdID }) {
                 coordinator.selectedNoteID = createdID
@@ -345,7 +363,7 @@ struct NoteListColumn: View {
 
     private func searchBarReturn() {
         let notes = filteredNotes
-        if notes.isEmpty && !coordinator.query.isEmpty {
+        if notes.isEmpty && !coordinator.typedQuery.isEmpty {
             Task { _ = await coordinator.newNoteFromQuery() }
         } else if !notes.isEmpty {
             if coordinator.selectedNoteID == nil ||
@@ -375,13 +393,19 @@ struct NoteListColumn: View {
         focusCoordinator.focus(.noteList)
     }
 
-    private func delete(_ note: Note) {
-        Task { try? await store.softDelete(id: note.id) }
+    private func delete(_ note: NoteSummary) {
+        Task {
+            do {
+                try await store.softDelete(id: note.id)
+            } catch {
+                coordinator.showError(error)
+            }
+        }
     }
 }
 
 struct NoteRow: View {
-    let note: Note
+    let note: NoteSummary
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -434,6 +458,8 @@ struct NotePreviewOverlay: View {
                 Divider()
 
                 ScrollView {
+                    // 注意：此处 note 来自 store.notes 摘要投影，body 可能被截断至 200 字、
+                    // bodyAttributes 为 NULL。仅用于预览只读展示，严禁据此回写或当完整正文使用。
                     Text(note.body.isEmpty ? "无正文" : note.body)
                         .font(.body)
                         .foregroundStyle(.primary)

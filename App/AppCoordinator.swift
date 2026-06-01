@@ -94,7 +94,7 @@ final class AppCoordinator {
     }
 
     func newNoteFromQuery() async -> UUID? {
-        let q = query
+        let q = typedQuery
         return await noteActionManager.newNoteFromQuery(query: q) { [weak self] note in
             self?.recentlyCreatedNoteID = note.id
             self?.selectedNoteID = note.id
@@ -139,6 +139,8 @@ final class AppCoordinator {
 
     func triggerSync() {
         Task {
+            // 先把编辑器内存中未保存的内容落到 DB 并【等待写入完成】，使冲突矩阵能识别 localDirty。
+            await MainWindowController.shared.flushActiveEditor()
             do {
                 try await sync?.sync()
             } catch {
@@ -153,6 +155,9 @@ final class AppCoordinator {
     }
 
     func checkForLocalChanges() async {
+        // 同步前 flush 当前编辑器并【等待落盘】，避免正在编辑、尚未自动保存的内容被远端下行覆盖，
+        // 也保证退出前未保存击键已持久化。
+        await MainWindowController.shared.flushActiveEditor()
         do {
             try await sync?.sync()
         } catch {
@@ -162,7 +167,13 @@ final class AppCoordinator {
 
     func deleteCurrentNote() {
         guard let id = selectedNoteID else { return }
-        Task { try? await store.softDelete(id: id) }
+        Task {
+            do {
+                try await store.softDelete(id: id)
+            } catch {
+                showError(error)
+            }
+        }
     }
 
     func toggleArchiveCurrentNote() {
@@ -186,41 +197,74 @@ final class AppCoordinator {
 
     // MARK: - Export
 
+    /// 导出/复制/分享需要【完整正文】：store.notes 是摘要（body 截断、无属性），
+    /// 必须按 id 取完整 Note，否则导出会被截断、富文本属性丢失。
+    private func fullNotes(for ids: [UUID]) async -> [Note] {
+        var result: [Note] = []
+        for id in ids {
+            if let note = await store.fullNote(id: id) { result.append(note) }
+        }
+        return result
+    }
+
     func copyAsMarkdown() {
-        noteActionManager.copyAsMarkdown(selectedNoteID: selectedNoteID, notes: store.notes)
+        Task {
+            guard let id = selectedNoteID, let full = await store.fullNote(id: id) else { return }
+            noteActionManager.copyAsMarkdown(selectedNoteID: id, notes: [full])
+        }
     }
 
     func copyAsRichText() {
-        noteActionManager.copyAsRichText(selectedNoteID: selectedNoteID, notes: store.notes)
+        Task {
+            guard let id = selectedNoteID, let full = await store.fullNote(id: id) else { return }
+            noteActionManager.copyAsRichText(selectedNoteID: id, notes: [full])
+        }
     }
 
     func copyAsPlainText() {
-        noteActionManager.copyAsPlainText(selectedNoteID: selectedNoteID, notes: store.notes)
+        Task {
+            guard let id = selectedNoteID, let full = await store.fullNote(id: id) else { return }
+            noteActionManager.copyAsPlainText(selectedNoteID: id, notes: [full])
+        }
     }
 
     func exportCurrentNote() {
-        noteActionManager.exportCurrentNote(
-            multiSelectionMode: multiSelectionMode,
-            selectedNoteID: selectedNoteID,
-            selectedNoteIDs: selectedNoteIDs,
-            notes: store.notes
-        )
+        Task {
+            let ids = multiSelectionMode ? Array(selectedNoteIDs) : (selectedNoteID.map { [$0] } ?? [])
+            let full = await fullNotes(for: ids)
+            noteActionManager.exportCurrentNote(
+                multiSelectionMode: multiSelectionMode,
+                selectedNoteID: selectedNoteID,
+                selectedNoteIDs: selectedNoteIDs,
+                notes: full
+            )
+        }
     }
 
     func exportSelectedNotes() {
-        noteActionManager.exportSelectedNotes(selectedNoteIDs: selectedNoteIDs, notes: store.notes)
+        Task {
+            let full = await fullNotes(for: Array(selectedNoteIDs))
+            noteActionManager.exportSelectedNotes(selectedNoteIDs: selectedNoteIDs, notes: full)
+        }
     }
 
     func shareCurrentNote(from view: NSView) {
-        noteActionManager.shareCurrentNote(from: view, selectedNoteID: selectedNoteID, notes: store.notes)
+        Task {
+            guard let id = selectedNoteID, let full = await store.fullNote(id: id) else { return }
+            noteActionManager.shareCurrentNote(from: view, selectedNoteID: id, notes: [full])
+        }
     }
 
     func showExportPanel() {
-        noteActionManager.showExportPanel(
-            selectedNoteID: selectedNoteID,
-            selectedNoteIDs: selectedNoteIDs,
-            notes: store.notes
-        )
+        Task {
+            let ids = (selectedNoteID.map { [$0] } ?? []) + Array(selectedNoteIDs)
+            let full = await fullNotes(for: Array(Set(ids)))
+            noteActionManager.showExportPanel(
+                selectedNoteID: selectedNoteID,
+                selectedNoteIDs: selectedNoteIDs,
+                notes: full
+            )
+        }
     }
 
     func showError(_ error: Error) {
@@ -252,7 +296,7 @@ final class AppCoordinator {
         }
     }
 
-    func extendSelection(to noteID: UUID, allNotes: [Note]) {
+    func extendSelection(to noteID: UUID, allNotes: [NoteSummary]) {
         selectionManager.extendSelection(
             to: noteID, allNotes: allNotes,
             anchorNoteID: &anchorNoteID,
@@ -261,7 +305,7 @@ final class AppCoordinator {
         )
     }
 
-    func selectAllNotes(in notes: [Note]) {
+    func selectAllNotes(in notes: [NoteSummary]) {
         selectionManager.selectAllNotes(in: notes, anchorNoteID: &anchorNoteID, selectedNoteIDs: &selectedNoteIDs)
     }
 }

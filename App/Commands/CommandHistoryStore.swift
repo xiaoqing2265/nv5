@@ -11,13 +11,25 @@ final class CommandHistoryStore {
     static let shared = CommandHistoryStore()
     private let key = "command_history_v1"
     private let maxEntries = 50
-    
+    private let defaults: UserDefaults
+
     private var entries: [CommandHistoryEntry] = []
     private var dirty = false
     private var saveTask: Task<Void, Never>?
-    
-    init() {
+
+    /// 注入 UserDefaults：生产用 `.standard`，测试用独立 suite 实现隔离。
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         entries = load()
+    }
+
+    /// 立即同步持久化（取消 1s 防抖）。用于退出等需要确定落盘的场景，也便于测试。
+    func persistNow() {
+        saveTask?.cancel()
+        if dirty {
+            save()
+            dirty = false
+        }
     }
     
     func record(_ commandID: String) {
@@ -70,16 +82,16 @@ final class CommandHistoryStore {
     }
     
     private func load() -> [CommandHistoryEntry] {
-        guard let data = UserDefaults.standard.data(forKey: key),
+        guard let data = defaults.data(forKey: key),
               let loaded = try? JSONDecoder().decode([CommandHistoryEntry].self, from: data) else {
             return []
         }
         return loaded
     }
-    
+
     private func save() {
         if let data = try? JSONEncoder().encode(entries) {
-            UserDefaults.standard.set(data, forKey: key)
+            defaults.set(data, forKey: key)
         }
     }
 }

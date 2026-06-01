@@ -29,7 +29,16 @@ public final class MainActorNoteRepository: NoteRepository {
     }
 
     public func search(query: String) async -> [Note] {
-        store.search(query: query)
+        // store.search 返回摘要（截断 body）；Intents/Shortcuts 把 body 作为「内容」暴露，
+        // 需要完整正文，故按匹配 id 取完整 Note。
+        let summaries = await store.search(query: query)
+        var results: [Note] = []
+        for summary in summaries {
+            if let full = await store.fullNote(id: summary.id) {
+                results.append(full)
+            }
+        }
+        return results
     }
 
     public func upsert(_ note: Note) async throws {

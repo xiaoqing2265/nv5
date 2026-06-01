@@ -108,3 +108,66 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
         try container.encode(archived, forKey: .archived)
     }
 }
+
+/// 笔记的【摘要投影】：`body` 截断至摘要长度、不含 `bodyAttributes` 与同步字段。
+///
+/// 由 `NoteStore` 的内存列表（`notes`/`archivedNotes`）与搜索结果返回，**仅供列表展示/过滤/选择**。
+/// 编辑、导出、写回（upsert）等需要完整内容的场景，必须用 `NoteStore.fullNote(id:)` 取完整 `Note`。
+///
+/// 把摘要与完整 `Note` 做成两个类型，是为了让**编译器在 API 边界拦截**「用摘要当完整数据」的误用：
+/// 任何接收 `Note` 的写入/导出 API 都无法被传入 `NoteSummary`，从结构上杜绝
+/// 「截断正文被写回数据库」「导出/复制只得到前 200 字」这类数据丢失。
+public struct NoteSummary: Identifiable, Hashable, Sendable {
+    public let id: UUID
+    public let title: String
+    /// 截断的正文（≤摘要长度）。仅供列表片段展示——切勿当作完整正文写回或导出。
+    public let body: String
+    public let labels: Set<String>
+    public let createdAt: Date
+    public let modifiedAt: Date
+    public let isEncrypted: Bool
+    public let localDirty: Bool
+    public let archived: Bool
+
+    public init(
+        id: UUID,
+        title: String,
+        body: String,
+        labels: Set<String>,
+        createdAt: Date,
+        modifiedAt: Date,
+        isEncrypted: Bool,
+        localDirty: Bool,
+        archived: Bool
+    ) {
+        self.id = id
+        self.title = title
+        self.body = body
+        self.labels = labels
+        self.createdAt = createdAt
+        self.modifiedAt = modifiedAt
+        self.isEncrypted = isEncrypted
+        self.localDirty = localDirty
+        self.archived = archived
+    }
+
+    /// 从（摘要 SQL 投影出的、body 已截断的）完整 `Note` 构造摘要。
+    public init(from note: Note) {
+        self.init(
+            id: note.id,
+            title: note.title,
+            body: note.body,
+            labels: note.labels,
+            createdAt: note.createdAt,
+            modifiedAt: note.modifiedAt,
+            isEncrypted: note.isEncrypted,
+            localDirty: note.localDirty,
+            archived: note.archived
+        )
+    }
+
+    public var displayTitle: String {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Untitled" : trimmed
+    }
+}

@@ -1,5 +1,5 @@
 import XCTest
-import NV5
+@testable import NV5
 
 @MainActor
 final class FocusCoordinatorTests: XCTestCase {

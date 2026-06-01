@@ -106,9 +106,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var coordinator: AppCoordinator?
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        if let coordinator {
-            Task { await coordinator.checkForLocalChanges() }
+        guard let coordinator else {
+            return .terminateNow
         }
-        return .terminateNow
+        // nvALT 风格：用 terminateLater 推迟退出，先【等待】把编辑器未保存击键落盘，
+        // 再做网络同步，完成后才放行退出——不与退出赛跑。
+        // checkForLocalChanges() 内部已先 await flushActiveEditor() 落盘，再 sync。
+        Task { @MainActor in
+            await coordinator.checkForLocalChanges()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 }

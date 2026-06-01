@@ -73,6 +73,7 @@ public final class SyncCoordinator {
     private var inflightSync: Task<Void, Error>?
     private let syncLock = NSLock()
     private var consecutiveFailures: Int = 0
+    private(set) var localSnapshotReadCount: Int = 0
 
     public init(client: any WebDAVClientProtocol, store: NoteStore, database: Database, crypto: CryptoEngine? = nil) {
         self.client = client
@@ -158,12 +159,13 @@ public final class SyncCoordinator {
             try await client.ensureDirectoryRecursively("tombstones")
 
             let snapshot = try await fetchRemoteSnapshot()
+            let localSnapshot = try await fetchAllLocal()
             print("[Sync] remote notes=\(snapshot.notes.count) tombstones=\(snapshot.tombstones.count)")
 
             try await applyNewTombstones(snapshot.tombstones)
-            try await downloadNewRemoteNotes(snapshot)
-            try await uploadLocalNewNotes()
-            try await reconcileExistingNotes(snapshot)
+            try await downloadNewRemoteNotes(snapshot, allLocal: localSnapshot)
+            try await uploadLocalNewNotes(allLocal: localSnapshot)
+            try await reconcileExistingNotes(snapshot, allLocal: localSnapshot)
             try await store.purgeDeletedAndSynced()
 
             lastSyncDate = Date()
@@ -214,8 +216,7 @@ public final class SyncCoordinator {
         }
     }
 
-    private func downloadNewRemoteNotes(_ snapshot: RemoteSnapshot) async throws {
-        let allLocal = try await fetchAllLocal()
+    private func downloadNewRemoteNotes(_ snapshot: RemoteSnapshot, allLocal: [Note]) async throws {
         let localByID = Dictionary(uniqueKeysWithValues: allLocal.map { ($0.id, $0) })
         for (id, resource) in snapshot.notes
             where localByID[id] == nil && !snapshot.tombstones.contains(id) {
@@ -227,16 +228,14 @@ public final class SyncCoordinator {
         }
     }
 
-    private func uploadLocalNewNotes() async throws {
-        let allLocal = try await fetchAllLocal()
+    private func uploadLocalNewNotes(allLocal: [Note]) async throws {
         for note in allLocal
             where note.remotePath == nil && note.localDirty && !note.deletedLocally {
             try await uploadNew(note)
         }
     }
 
-    private func reconcileExistingNotes(_ snapshot: RemoteSnapshot) async throws {
-        let allLocal = try await fetchAllLocal()
+    private func reconcileExistingNotes(_ snapshot: RemoteSnapshot, allLocal: [Note]) async throws {
         for note in allLocal {
             guard let remote = snapshot.notes[note.id] else { continue }
             let etagsMatch = note.etag == remote.etag
@@ -401,7 +400,8 @@ public final class SyncCoordinator {
     }
 
     private func fetchAllLocal() async throws -> [Note] {
-        try await database.writer.read { db in
+        localSnapshotReadCount += 1
+        return try await database.writer.read { db in
             try Note.fetchAll(db)
         }
     }

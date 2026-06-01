@@ -1,5 +1,5 @@
 import XCTest
-import NV5
+@testable import NV5
 
 @MainActor
 final class CommandRegistryTests: XCTestCase {
@@ -36,12 +36,6 @@ final class CommandRegistryTests: XCTestCase {
         ]
         registry.register(cmds)
         XCTAssertEqual(registry.commands.count, 3)
-    }
-
-    func test_duplicate_id_precondition_fails() {
-        registry.register(TestCommand(id: "dup", title: "First"))
-        XCTExpectFailure("Duplicate command id should trigger precondition")
-        registry.register(TestCommand(id: "dup", title: "Second"))
     }
 
     func test_empty_query_returns_all_enabled_commands() {

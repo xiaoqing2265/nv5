@@ -1,5 +1,5 @@
 import XCTest
-import NV5
+@testable import NV5
 
 final class FuzzyMatcherTests: XCTestCase {
 
@@ -55,7 +55,7 @@ final class FuzzyMatcherTests: XCTestCase {
         XCTAssertNil(score)
     }
 
-    func test_consecutive_chars_score_higher() {
+    func test_consecutive_chars_score_higher() throws {
         let score1 = FuzzyMatcher.score(
             query: "新建",
             title: "新建笔记",
@@ -69,19 +69,19 @@ final class FuzzyMatcherTests: XCTestCase {
             subtitle: nil
         )
         XCTAssertNotNil(score1)
-        XCTAssertNotNil(score2)
+        let unwrappedScore2 = try XCTUnwrap(score2)
         XCTAssertEqual(score1, 1.0)
-        XCTAssertLessThan(score2!, 1.0)
+        XCTAssertLessThan(unwrappedScore2, 1.0)
     }
 
-    func test_subtitle_low_weight() {
+    func test_subtitle_low_weight() throws {
         let score = FuzzyMatcher.score(
             query: "剪贴板",
             title: "复制为 Markdown",
             keywords: ["copy", "markdown", "md"],
             subtitle: "将当前笔记转为 Markdown 写入剪贴板"
         )
-        XCTAssertNotNil(score)
-        XCTAssertLessThanOrEqual(score!, 0.3)
+        let unwrappedScore = try XCTUnwrap(score)
+        XCTAssertLessThanOrEqual(unwrappedScore, 0.3)
     }
 }

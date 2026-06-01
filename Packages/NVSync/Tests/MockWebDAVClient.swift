@@ -10,6 +10,10 @@ actor MockWebDAVClient: WebDAVClientProtocol {
         files[path] = (data, etag)
     }
 
+    func uploadCount() -> Int {
+        uploads.count
+    }
+
     func upload(path: String, data: Data, ifMatch: String?, ifNoneMatch: String?) async throws -> String? {
         if let ifMatch = ifMatch, let existing = files[path], existing.1 != ifMatch {
             throw WebDAVError.preconditionFailed
@@ -33,8 +37,9 @@ actor MockWebDAVClient: WebDAVClientProtocol {
 
     func listDirectory(path: String) async throws -> [WebDAVResource] {
         return files.keys.filter { $0.hasPrefix(path) }.map {
-            WebDAVResource(
-                path: $0,
+            let resourcePath = ($0 as NSString).lastPathComponent
+            return WebDAVResource(
+                path: resourcePath,
                 etag: files[$0]?.1,
                 lastModified: Date(),
                 contentLength: Int64(files[$0]?.0.count ?? 0),

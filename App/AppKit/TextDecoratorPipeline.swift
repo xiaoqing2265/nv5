@@ -1,7 +1,7 @@
 import AppKit
 
 enum TextDecoratorPipeline {
-    static func runAll(on storage: NSTextStorage) {
+    static func runInteractive(on storage: NSTextStorage) {
         storage.beginEditing()
         defer { storage.endEditing() }
 
@@ -13,9 +13,15 @@ enum TextDecoratorPipeline {
         storage.removeAttribute(.underlineStyle, range: fullRange)
 
         MarkdownHeadingDecorator.decorate(storage)
-        LinkDecorator.decorate(storage)
         WikiLinkDecorator.decorate(storage)
         DoneTagDecorator.decorate(storage)
+    }
+
+    static func runAll(on storage: NSTextStorage) {
+        runInteractive(on: storage)
+        storage.beginEditing()
+        defer { storage.endEditing() }
+        LinkDecorator.decorate(storage)
     }
 }
 

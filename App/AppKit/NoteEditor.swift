@@ -38,6 +38,7 @@ struct NoteEditor: NSViewRepresentable {
         textView.usesFindBar = false
         textView.font = .systemFont(ofSize: 14)
         textView.textContainerInset = NSSize(width: 16, height: 12)
+        textView.setAccessibilityIdentifier("note-editor")  // UI 测试定位用
         textView.delegate = context.coordinator
 
         context.coordinator.textView = textView

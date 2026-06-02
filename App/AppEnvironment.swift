@@ -13,12 +13,21 @@ public final class AppEnvironment {
 
     private init() {
         do {
-            let appSupport = try FileManager.default.url(
-                for: .applicationSupportDirectory, in: .userDomainMask,
-                appropriateFor: nil, create: true
-            ).appendingPathComponent("NV5", isDirectory: true)
-            try FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
-            let dbURL = appSupport.appendingPathComponent("notes.sqlite")
+            let dbURL: URL
+            if ProcessInfo.processInfo.arguments.contains("--uitesting") {
+                // UI 测试：每次启动用全新临时数据库，绝不触碰用户真实笔记。
+                let tmp = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("NV5-UITest-\(UUID().uuidString)", isDirectory: true)
+                try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+                dbURL = tmp.appendingPathComponent("notes.sqlite")
+            } else {
+                let appSupport = try FileManager.default.url(
+                    for: .applicationSupportDirectory, in: .userDomainMask,
+                    appropriateFor: nil, create: true
+                ).appendingPathComponent("NV5", isDirectory: true)
+                try FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
+                dbURL = appSupport.appendingPathComponent("notes.sqlite")
+            }
             let db = try Database(url: dbURL)
             self.database = db
             let store = NoteStore(database: db)

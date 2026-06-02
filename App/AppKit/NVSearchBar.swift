@@ -20,6 +20,7 @@ struct NVSearchBar: NSViewRepresentable {
         field.placeholderString = "搜索或新建..."
         field.delegate = context.coordinator
         field.focusRingType = .none
+        field.setAccessibilityIdentifier("search-field")  // UI 测试定位用
         context.coordinator.selectAllCancellable = focusCoordinator.selectAllSubject
             .sink { _ in
                 guard let editor = field.currentEditor() else { return }

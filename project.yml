@@ -194,6 +194,21 @@ targets:
         BUNDLE_LOADER: "$(TEST_HOST)"
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/NV5.app/Contents/MacOS/NV5"
 
+  NV5UITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - UITests
+    dependencies:
+      - target: NV5App
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TEST_TARGET_NAME: NV5App
+        SWIFT_VERSION: "6.0"
+
 schemes:
   NV5App:
     build:
@@ -222,3 +237,12 @@ schemes:
       gatherCoverageData: true
       targets:
         - NV5AppTests
+  NV5UITests:
+    build:
+      targets:
+        NV5App: all
+        NV5UITests: all
+    test:
+      config: Debug
+      targets:
+        - NV5UITests

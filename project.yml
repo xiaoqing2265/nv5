@@ -163,6 +163,10 @@ targets:
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
         MACOSX_DEPLOYMENT_TARGET: "14.0"
+        # 本地 Debug 的默认版本号（CI 发布时由 release.yml 用 tag 覆盖）；
+        # 没有有效 CFBundleVersion 时 Sparkle 会报 "Fatal updater error" 并弹「无法检查更新」。
+        MARKETING_VERSION: "1.1.1"
+        CURRENT_PROJECT_VERSION: "1"
         INFOPLIST_FILE: App/Resources/Info.plist
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_IDENTITY: "-"

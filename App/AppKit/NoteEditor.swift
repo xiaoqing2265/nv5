@@ -117,6 +117,7 @@ struct NoteEditor: NSViewRepresentable {
         Coordinator(parent: self)
     }
 
+    @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: NoteEditor
         weak var textView: NSTextView?
@@ -129,7 +130,8 @@ struct NoteEditor: NSViewRepresentable {
         private var richSaveTask: Task<Void, Never>?
         private var undoManagers: [UUID: UndoManager] = [:]
         private var returnInListCancellable: AnyCancellable?
-        private var appSwitchObserver: Any?  // nvALT 风格：应用切换监听器
+        // nonisolated(unsafe)：仅在 deinit（单线程 dealloc）访问以移除观察者；类已 @MainActor。
+        private nonisolated(unsafe) var appSwitchObserver: Any?  // nvALT 风格：应用切换监听器
 
         var isDirty: Bool = false
         private var needsRichCommit: Bool = false

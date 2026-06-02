@@ -49,7 +49,7 @@ public final class Database {
     }
 }
 
-extension Note: FetchableRecord, MutablePersistableRecord {
+extension Note: @retroactive FetchableRecord, @retroactive MutablePersistableRecord {
     public static let databaseTableName = "note"
 
     public enum Columns {

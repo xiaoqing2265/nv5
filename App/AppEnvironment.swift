@@ -29,6 +29,15 @@ public final class AppEnvironment {
                 dbURL = appSupport.appendingPathComponent("notes.sqlite")
             }
             let db = try Database(url: dbURL)
+            // UI 测试预置：写入两条已知笔记，便于测试笔记切换/正文加载（避免在测试里连建笔记的脆弱时序）。
+            if ProcessInfo.processInfo.arguments.contains("--uitesting-seed") {
+                try? db.writer.write { conn in
+                    for (title, body) in [("AlphaNote", "alphauniquecontent"), ("BetaNote", "betacontent")] {
+                        var note = Note(title: title, body: body)
+                        try? note.insert(conn)
+                    }
+                }
+            }
             self.database = db
             let store = NoteStore(database: db)
             self.store = store

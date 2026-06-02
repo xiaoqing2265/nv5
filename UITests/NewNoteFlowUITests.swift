@@ -7,15 +7,22 @@ import XCTest
 /// 启动真实 app 的 UI 测试能捕获——正是本项目此前缺失的一层。
 final class NewNoteFlowUITests: XCTestCase {
 
+    private var app: XCUIApplication!
+
     override func setUpWithError() throws {
         continueAfterFailure = false
+        app = XCUIApplication()
+        app.launchArguments = ["--uitesting"]  // 隔离临时数据库，绝不触碰用户真实笔记
+        app.launch()
+        app.activate()
+    }
+
+    override func tearDownWithError() throws {
+        app.terminate()
+        app = nil
     }
 
     func test_create_note_from_query_enters_editor_and_is_editable() throws {
-        let app = XCUIApplication()
-        app.launchArguments = ["--uitesting"]  // 隔离临时数据库，绝不触碰用户真实笔记
-        app.launch()
-
         // 1) 定位搜索框，输入一个不存在的关键词
         let search = app.searchFields["search-field"]
         XCTAssertTrue(search.waitForExistence(timeout: 15), "搜索框应存在")

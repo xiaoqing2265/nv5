@@ -22,7 +22,7 @@ struct EditorColumn: View {
                 )
             } else if let id = coordinator.selectedNoteID,
                let summary = store.notes.first(where: { $0.id == id }) {
-                editorView(summary: summary, id: id)
+                editorView(summary: summary)
                     .onChange(of: focusCoordinator.current) { _, new in
                         editorFocused = (new == .editor)
                     }
@@ -56,15 +56,16 @@ struct EditorColumn: View {
     }
 
     @ViewBuilder
-    private func editorView(summary: NoteSummary, id: UUID) -> some View {
+    private func editorView(summary: NoteSummary) -> some View {
         VStack(spacing: 0) {
             TitleBar(note: summary)   // 标题/标签未被截断，用摘要保持响应式更新
             Divider()
-            if let full = fullNote, full.id == id {
-                // 契约：编辑器只接收来自 store.fullNote(id:) 的完整正文。
-                // summary（store.notes 投影）body 被截断、bodyAttributes 为 NULL，
-                // 若拿它喂编辑器会用截断内容覆盖完整正文。此断言在 Debug 下拦截误用。
-                let _ = assert(full.id == summary.id, "fullNote 与 summary 的 id 必须一致，否则正文加载错位")
+            if let full = fullNote {
+                // 编辑器由【已加载的完整笔记 fullNote】驱动（而非 selectedNoteID）。
+                // 契约：编辑器只接收 store.fullNote(id:) 的完整正文，绝不喂 summary（截断 body / 无属性）。
+                // 切换笔记时 fullNote 仍是旧笔记，直到 .task 加载完新笔记——编辑器持续显示旧笔记，
+                // 待新完整正文就绪，NoteEditor 的 noteID 变化 → 复用同一编辑器走「笔记切换」分支，
+                // 先 flush 旧笔记未保存内容再载入新笔记。这样既不截断、又保留切换 flush、还无 Color.clear 闪烁。
                 NoteEditor(
                     noteID: full.id,
                     initialBody: full.body,

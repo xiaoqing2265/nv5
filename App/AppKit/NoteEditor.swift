@@ -350,12 +350,14 @@ struct NoteEditor: NSViewRepresentable {
             let plain = storage.string
             let selection = textView.selectedRange()
             if includeAttributes {
-                TextDecoratorPipeline.runAll(on: storage)
-                // Strip artifacts (background colors, table blocks) before serializing
-                // so external-paste visual noise is never persisted into bodyAttributes.
-                let fullRange = NSRange(location: 0, length: storage.length)
-                NVTextView.sanitize(storage, range: fullRange)
-                let rtfd = try? storage.data(
+                // 序列化走副本，绝不修改 live storage：
+                // runAll 会对全文做 font/foregroundColor 属性覆盖，
+                // 直接改 live storage 会导致全文重绘（闪动）且覆盖用户字体设置。
+                let snapshot = NSTextStorage(attributedString: storage)
+                let fullRange = NSRange(location: 0, length: snapshot.length)
+                TextDecoratorPipeline.runAll(on: snapshot)
+                NVTextView.sanitize(snapshot, range: fullRange)
+                let rtfd = try? snapshot.data(
                     from: fullRange,
                     documentAttributes: [.documentType: NSAttributedString.DocumentType.rtfd]
                 )
@@ -377,9 +379,12 @@ struct NoteEditor: NSViewRepresentable {
 
             let plain = storage.string
             let selection = textView.selectedRange()
-            TextDecoratorPipeline.runAll(on: storage)
-            let rtfd = try? storage.data(
-                from: NSRange(location: 0, length: storage.length),
+            let snapshot = NSTextStorage(attributedString: storage)
+            let fullRange = NSRange(location: 0, length: snapshot.length)
+            TextDecoratorPipeline.runAll(on: snapshot)
+            NVTextView.sanitize(snapshot, range: fullRange)
+            let rtfd = try? snapshot.data(
+                from: fullRange,
                 documentAttributes: [.documentType: NSAttributedString.DocumentType.rtfd]
             )
             needsRichCommit = false

@@ -27,18 +27,24 @@ struct NoteEditor: NSViewRepresentable {
     @AppStorage("enableSpellCheck") private var spellCheckEnabled: Bool  = true
 
     private func applyAppearance(to textView: NSTextView) {
-        textView.font = NSFont(name: fontRaw, size: CGFloat(fontSize))
+        // 每次 updateNSView 都调用这里；只有值真正变化时才写入，
+        // 否则 defaultParagraphStyle setter 会触发全文重排，导致滚动位置回到顶端。
+        let newFont = NSFont(name: fontRaw, size: CGFloat(fontSize))
             ?? .monospacedSystemFont(ofSize: CGFloat(fontSize), weight: .regular)
-        let ps = NSMutableParagraphStyle()
-        ps.lineHeightMultiple = CGFloat(lineHeight)
-        textView.defaultParagraphStyle = ps
-        // Apply color theme background
+        if textView.font != newFont {
+            textView.font = newFont
+        }
+        let newLineHeight = CGFloat(lineHeight)
+        if textView.defaultParagraphStyle?.lineHeightMultiple != newLineHeight {
+            let ps = NSMutableParagraphStyle()
+            ps.lineHeightMultiple = newLineHeight
+            textView.defaultParagraphStyle = ps
+        }
         let themeKey = UserDefaults.standard.string(forKey: "colorTheme") ?? "default"
         if themeKey != "default", let theme = defaultColorThemes[themeKey] {
             textView.backgroundColor = NSColor(theme.backgroundColor)
             textView.drawsBackground = true
         } else {
-            // "default" 主题：跟随 appTheme（preferredColorScheme），不强制设置
             textView.drawsBackground = true
             textView.backgroundColor = .textBackgroundColor
         }

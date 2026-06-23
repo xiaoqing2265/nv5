@@ -3,12 +3,12 @@
     <channel>
         <title>NV5</title>
         <item>
-            <title>1.1.2</title>
-            <pubDate>Tue, 02 Jun 2026 17:18:17 +0000</pubDate>
-            <sparkle:version>85</sparkle:version>
-            <sparkle:shortVersionString>1.1.2</sparkle:shortVersionString>
+            <title>1.2.0</title>
+            <pubDate>Tue, 23 Jun 2026 10:43:54 +0000</pubDate>
+            <sparkle:version>86</sparkle:version>
+            <sparkle:shortVersionString>1.2.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/xiaoqing2265/nv5/releases/download/v1.1.2/NV5-v1.1.2.dmg" length="9204846" type="application/octet-stream" sparkle:edSignature="5TUJBMJ/+77nn9rWzaoSgPygfrwEYofdtfnpDYNoUwaUCZV5ImhyuWOluWVL4hd8KeGGI1pGdmH43lFTYezXAQ=="/>
+            <enclosure url="https://github.com/xiaoqing2265/nv5/releases/download/v1.2.0/NV5-v1.2.0.dmg" length="9132371" type="application/octet-stream" sparkle:edSignature="SiF4Xg96HXHLzcWMbjy3kVAFc+jjzi//l+JhgvAm6E9BC3KD7um+it9SMzF7HZIXOB2nhpXcjvZgmCBYwR69DA=="/>
         </item>
     </channel>
 </rss>

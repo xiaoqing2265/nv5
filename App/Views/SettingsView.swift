@@ -153,15 +153,14 @@ struct GeneralSettingsNew: View {
 
 // MARK: - 外观设置
 struct AppearanceSettingsNew: View {
-    @AppStorage("appTheme") private var themeRaw: String = AppTheme.system.rawValue
-    @AppStorage("editorFont") private var fontRaw: String = EditorFont.menlo.rawValue
-    @AppStorage("editorFontSize") private var fontSize: Double = 14
-    @AppStorage("colorTheme") private var colorThemeKey: String = "default"
-    @AppStorage("lineHeight") private var lineHeight: Double = 1.5
+    @AppStorage("editorTheme") private var themeRaw: String = EditorTheme.system.rawValue
+    @AppStorage("editorFont")  private var fontRaw:  String = EditorFont.menlo.rawValue
+    @AppStorage("editorFontSize") private var fontSize:   Double = 14
+    @AppStorage("lineHeight")     private var lineHeight: Double = 1.5
 
-    private var theme: Binding<AppTheme> {
+    private var editorTheme: Binding<EditorTheme> {
         Binding(
-            get: { AppTheme(rawValue: themeRaw) ?? .system },
+            get: { EditorTheme(rawValue: themeRaw) ?? .system },
             set: { themeRaw = $0.rawValue }
         )
     }
@@ -176,8 +175,8 @@ struct AppearanceSettingsNew: View {
     var body: some View {
         Form {
             Section("主题") {
-                Picker("外观", selection: theme) {
-                    ForEach(AppTheme.allCases) { t in
+                Picker("主题", selection: editorTheme) {
+                    ForEach(EditorTheme.allCases) { t in
                         Text(t.displayName).tag(t)
                     }
                 }
@@ -215,25 +214,13 @@ struct AppearanceSettingsNew: View {
                 }
             }
 
-            Section("颜色主题") {
-                Picker("主题", selection: $colorThemeKey) {
-                    ForEach(defaultColorThemes.keys.sorted(), id: \.self) { key in
-                        if let theme = defaultColorThemes[key] {
-                            Text(theme.name).tag(key)
-                        }
-                    }
-                }
-            }
-
             Section("预览") {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("The quick brown fox jumps over the lazy dog")
-                        .font(.system(size: CGFloat(fontSize), design: .monospaced))
-                        .lineSpacing(lineHeight - 1.0)
-                        .padding(8)
-                        .background(Color(.controlBackgroundColor))
-                        .cornerRadius(6)
-                }
+                Text("The quick brown fox jumps over the lazy dog")
+                    .font(.system(size: CGFloat(fontSize), design: .monospaced))
+                    .lineSpacing(lineHeight - 1.0)
+                    .padding(8)
+                    .background(Color(.controlBackgroundColor))
+                    .cornerRadius(6)
             }
         }
         .formStyle(.grouped)
@@ -501,26 +488,64 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     }
 }
 
-enum AppTheme: String, CaseIterable, Identifiable {
-    case system = "system"
-    case light = "light"
-    case dark = "dark"
+enum EditorTheme: String, CaseIterable, Identifiable {
+    case system         = "system"
+    case light          = "light"
+    case dark           = "dark"
+    case solarizedLight = "solarized-light"
+    case solarizedDark  = "solarized-dark"
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .system: return "跟随系统"
-        case .light: return "亮色"
-        case .dark: return "暗色"
+        case .system:         return "跟随系统"
+        case .light:          return "亮色"
+        case .dark:           return "暗色"
+        case .solarizedLight: return "Solarized Light"
+        case .solarizedDark:  return "Solarized Dark"
         }
     }
 
+    /// SwiftUI 窗口级别的 color scheme；nil = 跟随系统
     var colorScheme: ColorScheme? {
         switch self {
-        case .system: return nil
-        case .light: return .light
-        case .dark: return .dark
+        case .system:                  return nil
+        case .light, .solarizedLight:  return .light
+        case .dark, .solarizedDark:    return .dark
+        }
+    }
+
+    /// NSTextView 背景色——semantic 色在暗/亮模式下自动适配，固定主题用具体 RGB
+    var editorBackground: NSColor {
+        switch self {
+        case .system, .light, .dark:  return .textBackgroundColor
+        case .solarizedLight:         return NSColor(red: 0.992, green: 0.965, blue: 0.890, alpha: 1)
+        case .solarizedDark:          return NSColor(red: 0.000, green: 0.169, blue: 0.212, alpha: 1)
+        }
+    }
+
+    /// NSTextView 文字色
+    var editorForeground: NSColor {
+        switch self {
+        case .system, .light, .dark:  return .labelColor
+        case .solarizedLight:         return NSColor(red: 0.396, green: 0.482, blue: 0.514, alpha: 1)
+        case .solarizedDark:          return NSColor(red: 0.839, green: 0.855, blue: 0.859, alpha: 1)
+        }
+    }
+
+    /// 首次启动时从旧 key（appTheme + colorTheme）迁移
+    static func migrate() -> EditorTheme {
+        let colorTheme = UserDefaults.standard.string(forKey: "colorTheme") ?? "default"
+        switch colorTheme {
+        case "solarized-light": return .solarizedLight
+        case "solarized-dark":  return .solarizedDark
+        default: break
+        }
+        switch UserDefaults.standard.string(forKey: "appTheme") ?? "system" {
+        case "light": return .light
+        case "dark":  return .dark
+        default:      return .system
         }
     }
 }
@@ -554,34 +579,3 @@ enum TabKeyBehavior: String, CaseIterable, Identifiable {
     }
 }
 
-struct ColorTheme {
-    let name: String
-    let textColor: Color
-    let backgroundColor: Color
-    let searchHighlightColor: Color
-    let accentColor: Color
-}
-
-let defaultColorThemes: [String: ColorTheme] = [
-    "default": ColorTheme(
-        name: "默认",
-        textColor: .primary,
-        backgroundColor: .white,
-        searchHighlightColor: Color(red: 1.0, green: 1.0, blue: 0.0, opacity: 0.3),
-        accentColor: .blue
-    ),
-    "solarized-light": ColorTheme(
-        name: "Solarized Light",
-        textColor: Color(red: 0.396, green: 0.482, blue: 0.514),
-        backgroundColor: Color(red: 0.992, green: 0.965, blue: 0.890),
-        searchHighlightColor: Color(red: 1.0, green: 1.0, blue: 0.0, opacity: 0.3),
-        accentColor: Color(red: 0.149, green: 0.545, blue: 0.824)
-    ),
-    "solarized-dark": ColorTheme(
-        name: "Solarized Dark",
-        textColor: Color(red: 0.839, green: 0.855, blue: 0.859),
-        backgroundColor: Color(red: 0.0, green: 0.169, blue: 0.212),
-        searchHighlightColor: Color(red: 1.0, green: 1.0, blue: 0.0, opacity: 0.3),
-        accentColor: Color(red: 0.149, green: 0.545, blue: 0.824)
-    ),
-]

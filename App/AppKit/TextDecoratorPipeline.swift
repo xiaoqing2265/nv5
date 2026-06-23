@@ -6,12 +6,8 @@ enum TextDecoratorPipeline {
         defer { storage.endEditing() }
 
         let fgColor: NSColor = {
-            let key = UserDefaults.standard.string(forKey: "colorTheme") ?? "default"
-            if key == "default" { return .labelColor }
-            if let theme = defaultColorThemes[key] {
-                return NSColor(theme.textColor)
-            }
-            return .labelColor
+            let theme = EditorTheme(rawValue: UserDefaults.standard.string(forKey: "editorTheme") ?? "system") ?? .system
+            return theme.editorForeground
         }()
 
         let fullRange = NSRange(location: 0, length: storage.length)

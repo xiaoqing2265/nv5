@@ -21,38 +21,31 @@ struct NoteEditor: NSViewRepresentable {
     var lightweightDebounceNanos: UInt64 = 300_000_000  // 轻量文本保存：300ms
     var idleDebounceNanos: UInt64 = 2_000_000_000        // 富文本空闲保存：2s
 
+    @AppStorage("editorTheme")      private var themeRaw:         String = EditorTheme.system.rawValue
     @AppStorage("editorFont")       private var fontRaw:          String = "Menlo"
     @AppStorage("editorFontSize")   private var fontSize:         Double = 14
     @AppStorage("lineHeight")       private var lineHeight:       Double = 1.5
     @AppStorage("enableSpellCheck") private var spellCheckEnabled: Bool  = true
 
     private func applyAppearance(to textView: NSTextView) {
-        // 每次 updateNSView 都调用这里；只有值真正变化时才写入，
-        // 否则 defaultParagraphStyle setter 会触发全文重排，导致滚动位置回到顶端。
+        // 每次 updateNSView 都调用这里；全部加值守卫，只有设置真正变化时才写入，
+        // 避免不必要的重排（defaultParagraphStyle）和重绘（backgroundColor）。
+        let theme = EditorTheme(rawValue: themeRaw) ?? .system
+
         let newFont = NSFont(name: fontRaw, size: CGFloat(fontSize))
             ?? .monospacedSystemFont(ofSize: CGFloat(fontSize), weight: .regular)
-        if textView.font != newFont {
-            textView.font = newFont
-        }
+        if textView.font != newFont { textView.font = newFont }
+
         let newLineHeight = CGFloat(lineHeight)
         if textView.defaultParagraphStyle?.lineHeightMultiple != newLineHeight {
             let ps = NSMutableParagraphStyle()
             ps.lineHeightMultiple = newLineHeight
             textView.defaultParagraphStyle = ps
         }
-        let themeKey = UserDefaults.standard.string(forKey: "colorTheme") ?? "default"
-        let newBG: NSColor
-        if themeKey != "default", let theme = defaultColorThemes[themeKey] {
-            newBG = NSColor(theme.backgroundColor)
-        } else {
-            newBG = .textBackgroundColor
-        }
-        if !textView.backgroundColor.isEqual(newBG) {
-            textView.backgroundColor = newBG
-        }
-        if !textView.drawsBackground {
-            textView.drawsBackground = true
-        }
+
+        let newBG = theme.editorBackground
+        if !textView.backgroundColor.isEqual(newBG) { textView.backgroundColor = newBG }
+        if !textView.drawsBackground { textView.drawsBackground = true }
     }
 
     func makeNSView(context: Context) -> NSScrollView {

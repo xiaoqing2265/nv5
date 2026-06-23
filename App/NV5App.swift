@@ -12,14 +12,19 @@ struct NV5App: App {
     @State private var focusCoordinator = FocusCoordinator()
     @StateObject private var updaterController = UpdaterController()
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @AppStorage("appTheme") private var themeRaw: String = AppTheme.system.rawValue
+    @AppStorage("editorTheme") private var themeRaw: String = EditorTheme.system.rawValue
 
     init() {
         CrashReporter.install()
+        // 首次启动：从旧 appTheme + colorTheme 迁移到统一的 editorTheme
+        if UserDefaults.standard.object(forKey: "editorTheme") == nil {
+            let migrated = EditorTheme.migrate()
+            UserDefaults.standard.set(migrated.rawValue, forKey: "editorTheme")
+        }
     }
 
     private var colorScheme: ColorScheme? {
-        AppTheme(rawValue: themeRaw)?.colorScheme
+        EditorTheme(rawValue: themeRaw)?.colorScheme
     }
 
     var body: some Scene {

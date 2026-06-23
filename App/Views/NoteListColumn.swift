@@ -15,6 +15,21 @@ struct NoteListColumn: View {
     @State private var filteredNotes: [NoteSummary] = []
     @State private var filterTask: Task<Void, Never>?
 
+    // MARK: - 命令模式（> 前缀）
+    /// typedQuery 以 ">" 开头时进入命令模式，列表改为渲染命令集合而非笔记。
+    private var isCommandMode: Bool {
+        coordinator.typedQuery.hasPrefix(">")
+    }
+    private var commandQuery: String {
+        let raw = coordinator.typedQuery.dropFirst()
+        return String(raw).trimmingCharacters(in: .whitespaces)
+    }
+    private var commandResults: [ScoredCommand] {
+        let ctx = CommandContext(coordinator: coordinator, focus: focusCoordinator)
+        return CommandRegistry.shared.search(commandQuery, in: ctx)
+    }
+    @State private var selectedCommandIndex: Int = 0
+
     /// 唯一的检索意图来源 = `coordinator.typedQuery`（用户真实键入的关键词）。
     /// 列表过滤、新建笔记、编辑器高亮全部读它；`coordinator.query` 仅作搜索框显示，
     /// 不参与任何语义判断——这从结构上杜绝了「自动补全标题污染过滤器」导致的关键词消失。
@@ -52,9 +67,13 @@ struct NoteListColumn: View {
             VStack(spacing: 0) {
                 searchBar
                 Divider()
-                noteList
-                if coordinator.multiSelectionMode {
-                    multiSelectBar
+                if isCommandMode {
+                    commandList
+                } else {
+                    noteList
+                    if coordinator.multiSelectionMode {
+                        multiSelectBar
+                    }
                 }
             }
             if let note = previewNote {
@@ -68,10 +87,87 @@ struct NoteListColumn: View {
             filterTask?.cancel()
             filterTask = nil
         }
-        .onChange(of: coordinator.typedQuery) { _, _ in scheduleFilterUpdate(debounce: true) }
+        .onChange(of: coordinator.typedQuery) { _, newQuery in
+            if newQuery.hasPrefix(">") {
+                selectedCommandIndex = 0
+            } else {
+                scheduleFilterUpdate(debounce: true)
+            }
+        }
         .onChange(of: selectedItem) { _, _ in scheduleFilterUpdate(debounce: false) }
         .onChange(of: store.notes) { _, _ in scheduleFilterUpdate(debounce: false) }
         .onChange(of: store.archivedNotes) { _, _ in scheduleFilterUpdate(debounce: false) }
+    }
+
+    // MARK: - 命令模式列表
+
+    private var commandList: some View {
+        let results = commandResults
+        return Group {
+            if results.isEmpty {
+                VStack(spacing: 8) {
+                    Spacer()
+                    Image(systemName: "command")
+                        .font(.title2)
+                        .foregroundStyle(.quaternary)
+                    Text(commandQuery.isEmpty ? "输入命令名称筛选…" : "没有匹配的命令")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
+            } else {
+                ScrollViewReader { proxy in
+                    List(Array(results.enumerated()), id: \.offset) { idx, scored in
+                        InlineCommandRow(command: scored.command, isSelected: idx == selectedCommandIndex)
+                            .id(idx)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
+                            .onTapGesture {
+                                selectedCommandIndex = idx
+                                executeCommand(at: idx, results: results)
+                            }
+                    }
+                    .listStyle(.inset)
+                    .onKeyPress(.return) {
+                        executeCommand(at: selectedCommandIndex, results: results)
+                        return .handled
+                    }
+                    .onKeyPress(.upArrow) {
+                        let next = max(0, selectedCommandIndex - 1)
+                        selectedCommandIndex = next
+                        proxy.scrollTo(next, anchor: .center)
+                        return .handled
+                    }
+                    .onKeyPress(.downArrow) {
+                        let next = min(results.count - 1, selectedCommandIndex + 1)
+                        selectedCommandIndex = next
+                        proxy.scrollTo(next, anchor: .center)
+                        return .handled
+                    }
+                    .onKeyPress(.escape) {
+                        coordinator.typedQuery = commandQuery
+                        coordinator.query = commandQuery
+                        focusCoordinator.focus(.searchField)
+                        MainWindowController.shared.focusSearchField()
+                        return .handled
+                    }
+                    .onChange(of: selectedCommandIndex) { _, new in
+                        proxy.scrollTo(new, anchor: .center)
+                    }
+                }
+            }
+        }
+    }
+
+    private func executeCommand(at index: Int, results: [ScoredCommand]) {
+        guard index >= 0, index < results.count else { return }
+        let scored = results[index]
+        let ctx = CommandContext(coordinator: coordinator, focus: focusCoordinator)
+        Task { await scored.command.run(in: ctx) }
+        // 执行后退出命令模式，恢复空搜索
+        coordinator.typedQuery = ""
+        coordinator.query = ""
+        focusCoordinator.focus(.noteList)
     }
 
     private var searchBar: some View {
@@ -362,6 +458,11 @@ struct NoteListColumn: View {
     }
 
     private func searchBarReturn() {
+        if isCommandMode {
+            let results = commandResults
+            executeCommand(at: selectedCommandIndex, results: results)
+            return
+        }
         let notes = filteredNotes
         if notes.isEmpty && !coordinator.typedQuery.isEmpty {
             Task { _ = await coordinator.newNoteFromQuery() }
@@ -377,6 +478,11 @@ struct NoteListColumn: View {
     }
 
     private func searchBarArrowDown() {
+        if isCommandMode {
+            selectedCommandIndex = min(commandResults.count - 1, selectedCommandIndex + 1)
+            focusCoordinator.focus(.noteList)
+            return
+        }
         let notes = filteredNotes
         if !notes.isEmpty {
             if coordinator.selectedNoteID == nil {
@@ -387,6 +493,11 @@ struct NoteListColumn: View {
     }
 
     private func searchBarArrowUp() {
+        if isCommandMode {
+            selectedCommandIndex = max(0, selectedCommandIndex - 1)
+            focusCoordinator.focus(.noteList)
+            return
+        }
         let notes = filteredNotes
         guard !notes.isEmpty else { return }
         coordinator.selectedNoteID = notes.last?.id
@@ -401,6 +512,37 @@ struct NoteListColumn: View {
                 coordinator.showError(error)
             }
         }
+    }
+}
+
+// MARK: - 内联命令行（复用主列表视觉语言）
+
+struct InlineCommandRow: View {
+    let command: AppCommand
+    let isSelected: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: command.symbol)
+                .frame(width: 18)
+                .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(command.title)
+                    .font(NVTheme.Fonts.listTitle)
+                    .foregroundStyle(isSelected ? Color.primary : .primary)
+                if let sub = command.subtitle {
+                    Text(sub)
+                        .font(NVTheme.Fonts.listMeta)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, NVTheme.Metrics.listRowVerticalPadding)
+        .contentShape(Rectangle())
+        .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 }
 

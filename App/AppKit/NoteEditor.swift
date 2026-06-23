@@ -21,22 +21,59 @@ struct NoteEditor: NSViewRepresentable {
     var lightweightDebounceNanos: UInt64 = 300_000_000  // 轻量文本保存：300ms
     var idleDebounceNanos: UInt64 = 2_000_000_000        // 富文本空闲保存：2s
 
+    @AppStorage("editorFont")       private var fontRaw:          String = "Menlo"
+    @AppStorage("editorFontSize")   private var fontSize:         Double = 14
+    @AppStorage("lineHeight")       private var lineHeight:       Double = 1.5
+    @AppStorage("enableSpellCheck") private var spellCheckEnabled: Bool  = true
+
+    private func applyAppearance(to textView: NSTextView) {
+        textView.font = NSFont(name: fontRaw, size: CGFloat(fontSize))
+            ?? .monospacedSystemFont(ofSize: CGFloat(fontSize), weight: .regular)
+        let ps = NSMutableParagraphStyle()
+        ps.lineHeightMultiple = CGFloat(lineHeight)
+        textView.defaultParagraphStyle = ps
+        // Apply color theme background
+        let themeKey = UserDefaults.standard.string(forKey: "colorTheme") ?? "default"
+        if themeKey != "default", let theme = defaultColorThemes[themeKey] {
+            textView.backgroundColor = NSColor(theme.backgroundColor)
+            textView.drawsBackground = true
+        } else {
+            // "default" 主题：跟随 appTheme（preferredColorScheme），不强制设置
+            textView.drawsBackground = true
+            textView.backgroundColor = .textBackgroundColor
+        }
+    }
+
     func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSTextView.scrollableTextView()
+        let scrollView = NSScrollView()
         scrollView.borderType = .noBorder
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
+        scrollView.autoresizingMask = [.width, .height]
 
-        let textView = scrollView.documentView as! NSTextView
+        let textStorage = NSTextStorage()
+        let layoutManager = NSLayoutManager()
+        textStorage.addLayoutManager(layoutManager)
+        let container = NSTextContainer(containerSize: NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude))
+        container.widthTracksTextView = true
+        layoutManager.addTextContainer(container)
+
+        let textView = NVTextView(frame: .zero, textContainer: container)
+        textView.minSize = NSSize(width: 0, height: 0)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = .width
+        scrollView.documentView = textView
         textView.allowsUndo = true
         textView.isRichText = true
         textView.isFieldEditor = false
-        textView.isContinuousSpellCheckingEnabled = true
+        textView.isContinuousSpellCheckingEnabled = spellCheckEnabled
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticLinkDetectionEnabled = false
         textView.usesFindBar = false
-        textView.font = .systemFont(ofSize: 14)
+        applyAppearance(to: textView)
         textView.textContainerInset = NSSize(width: 16, height: 12)
         textView.setAccessibilityIdentifier("note-editor")  // UI 测试定位用
         textView.delegate = context.coordinator
@@ -111,6 +148,9 @@ struct NoteEditor: NSViewRepresentable {
             context.coordinator.bringFocus()
         }
         context.coordinator.lastFocusRequest = focusRequest
+
+        applyAppearance(to: textView)
+        textView.isContinuousSpellCheckingEnabled = spellCheckEnabled
     }
 
     func makeCoordinator() -> Coordinator {
@@ -206,7 +246,10 @@ struct NoteEditor: NSViewRepresentable {
                    data: data,
                    options: [.documentType: NSAttributedString.DocumentType.rtfd],
                    documentAttributes: nil) {
-                attributed = restored
+                // Strip attributes that produce visual artifacts in dark mode (see NVTextView.sanitize).
+                let mutable = NSMutableAttributedString(attributedString: restored)
+                NVTextView.sanitize(mutable, range: NSRange(location: 0, length: mutable.length))
+                attributed = mutable
             } else {
                 attributed = NSAttributedString(
                     string: body,
@@ -277,6 +320,15 @@ struct NoteEditor: NSViewRepresentable {
                 parent.onEscape()
                 return true
             }
+            if commandSelector == #selector(NSResponder.insertTab(_:)) {
+                let raw = UserDefaults.standard.string(forKey: "tabKeyBehavior") ?? "indent"
+                if raw == "softIndent" {
+                    textView.insertText("    ", replacementRange: textView.selectedRange())
+                    return true
+                }
+                // indent / nextFocus: 走系统默认行为
+                return false
+            }
             return false
         }
 
@@ -291,8 +343,12 @@ struct NoteEditor: NSViewRepresentable {
             let selection = textView.selectedRange()
             if includeAttributes {
                 TextDecoratorPipeline.runAll(on: storage)
+                // Strip artifacts (background colors, table blocks) before serializing
+                // so external-paste visual noise is never persisted into bodyAttributes.
+                let fullRange = NSRange(location: 0, length: storage.length)
+                NVTextView.sanitize(storage, range: fullRange)
                 let rtfd = try? storage.data(
-                    from: NSRange(location: 0, length: storage.length),
+                    from: fullRange,
                     documentAttributes: [.documentType: NSAttributedString.DocumentType.rtfd]
                 )
                 parent.onRichCommit(id, plain, rtfd, selection)
@@ -367,6 +423,42 @@ struct NoteEditor: NSViewRepresentable {
             }
 
             return firstMatchRange
+        }
+    }
+}
+
+// NSTextView subclass that sanitizes pasted rich text so external formatting
+// (white background colors, HTML table-block wrappers from Notion/browsers) doesn't
+// produce a white box in dark mode.
+private final class NVTextView: NSTextView {
+    override func paste(_ sender: Any?) {
+        let selRange = selectedRange()
+        let lengthBefore = textStorage?.length ?? 0
+        super.paste(sender)
+        let lengthAfter = textStorage?.length ?? 0
+        let pastedLength = lengthAfter - lengthBefore + selRange.length
+        if pastedLength > 0, let storage = textStorage {
+            let pastedRange = NSRange(location: selRange.location, length: pastedLength)
+            NVTextView.sanitize(storage, range: pastedRange)
+        }
+        // Reset the view's own background color: some RTF sources set
+        // NSBackgroundColorDocumentAttribute (white) which NSTextView applies to
+        // self.backgroundColor — invisible via attribute stripping above.
+        backgroundColor = .textBackgroundColor
+    }
+
+    /// Strip attributes that produce visual artifacts in dark mode:
+    /// - `.backgroundColor` character attributes (white blocks from light-mode apps)
+    /// - `NSTextTableBlock` inside NSParagraphStyle (HTML pastes wrap text in table
+    ///   cells that render as white rectangles even when the block's backgroundColor is nil)
+    static func sanitize(_ text: NSMutableAttributedString, range: NSRange) {
+        guard text.length > 0, range.length > 0 else { return }
+        text.removeAttribute(.backgroundColor, range: range)
+        text.enumerateAttribute(.paragraphStyle, in: range, options: []) { value, psRange, _ in
+            guard let ps = value as? NSParagraphStyle, !ps.textBlocks.isEmpty else { return }
+            let clean = ps.mutableCopy() as! NSMutableParagraphStyle
+            clean.textBlocks = []
+            text.addAttribute(.paragraphStyle, value: clean, range: psRange)
         }
     }
 }

@@ -127,7 +127,7 @@ struct NVSearchBar: NSViewRepresentable {
                     let history = historyStore.history()
                     guard !history.isEmpty else { return false }
                     historyIndex = min(historyIndex + 1, history.count - 1)
-                    let restored = history[safe: historyIndex] ?? ""
+                    let restored = historyIndex < history.count ? history[historyIndex] : ""
                     parent.typedText = restored
                     parent.text = restored
                     return true
@@ -140,7 +140,7 @@ struct NVSearchBar: NSViewRepresentable {
                     guard !history.isEmpty else { return false }
                     if historyIndex > 0 {
                         historyIndex -= 1
-                        let restored = history[safe: historyIndex] ?? ""
+                        let restored = historyIndex < history.count ? history[historyIndex] : ""
                         parent.typedText = restored
                         parent.text = restored
                     } else if historyIndex == 0 {

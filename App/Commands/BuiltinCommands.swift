@@ -288,21 +288,6 @@ struct ToggleFullScreenEditorCommand: AppCommand {
 
 // MARK: - App Commands
 
-struct CommandPaletteCommand: AppCommand {
-    let id = "app.commandPalette"
-    let title = "打开命令面板"
-    let subtitle: String? = nil
-    let keywords = ["command", "palette", "命令"]
-    let category: CommandCategory = .app
-    let symbol = "command"
-
-    func isEnabled(in context: CommandContext) -> Bool { true }
-
-    func run(in context: CommandContext) async {
-        OverlayManager.shared.open(.commandPalette)
-    }
-}
-
 struct ShortcutsPreferencesCommand: AppCommand {
     let id = "app.preferences.shortcuts"
     let title = "偏好设置 - 快捷键"
@@ -447,7 +432,6 @@ enum BuiltinCommands {
         PreviousNoteCommand(),
         NextNoteCommand(),
         SelectAllCommand(),
-        CommandPaletteCommand(),
         ShortcutsPreferencesCommand(),
         FeedbackCommand(),
         ExportCrashLogCommand(),

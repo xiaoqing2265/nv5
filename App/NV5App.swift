@@ -12,9 +12,14 @@ struct NV5App: App {
     @State private var focusCoordinator = FocusCoordinator()
     @StateObject private var updaterController = UpdaterController()
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @AppStorage("appTheme") private var themeRaw: String = AppTheme.system.rawValue
 
     init() {
         CrashReporter.install()
+    }
+
+    private var colorScheme: ColorScheme? {
+        AppTheme(rawValue: themeRaw)?.colorScheme
     }
 
     var body: some Scene {
@@ -25,6 +30,7 @@ struct NV5App: App {
                 .environment(focusCoordinator)
                 .environment(OverlayManager.shared)
                 .frame(minWidth: 800, minHeight: 500)
+                .preferredColorScheme(colorScheme)
                 .onAppear { appDelegate.coordinator = coordinator; coordinator.bootstrap(focusCoordinator: focusCoordinator) }
                 .onOpenURL { url in
                     let handler = URLSchemeHandler(coordinator: coordinator)
@@ -90,20 +96,28 @@ struct NV5App: App {
                     .keyboardShortcut("f", modifiers: [.command, .control])
             }
             CommandMenu("命令") {
-                Button("打开命令面板") { OverlayManager.shared.open(.commandPalette) }
-                    .keyboardShortcut("b", modifiers: [.command, .shift])
+                Button("命令模式（>）") {
+                    coordinator.enterCommandMode(focusCoordinator: focusCoordinator)
+                }
+                .keyboardShortcut("b", modifiers: [.command, .shift])
             }
         }
 
         Settings {
             SettingsNavigationView()
                 .environment(coordinator)
+                .environmentObject(updaterController)
+                .preferredColorScheme(colorScheme)
         }
     }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var coordinator: AppCoordinator?
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        return UserDefaults.standard.bool(forKey: "closeWindowToQuit")
+    }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let coordinator else {

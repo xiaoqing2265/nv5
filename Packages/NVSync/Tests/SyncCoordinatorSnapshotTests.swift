@@ -41,6 +41,22 @@ final class SyncCoordinatorSnapshotTests: XCTestCase {
         XCTAssertEqual(uploadCount, 2)
     }
 
+    /// 所有同步（含周期同步）开始前应调用注入的 preSyncFlush，且在读取本地快照之前运行：
+    /// flush 里新增的笔记应被本次同步上传，证明编辑器内容会先落盘再参与同步（堵住编辑/同步竞态）。
+    func test_preSyncFlush_runs_before_local_snapshot_and_its_changes_sync() async throws {
+        let s = store!
+        let note = Note(title: "FlushedBeforeSync", body: "x")
+        let c = SyncCoordinator(
+            client: client, store: store, database: database,
+            preSyncFlush: { try? await s.upsert(note) }
+        )
+
+        try await c.sync()
+
+        let uploads = await client.uploadCount()
+        XCTAssertEqual(uploads, 1, "preSyncFlush 应在同步读取本地状态前运行，其新增笔记应被本次同步上传")
+    }
+
     func testSyncReadsLocalSnapshotOnceWhenDownloadingRemoteNotes() async throws {
         let remote = Note(title: "Remote", body: "Body", localDirty: false)
         let payload = RemoteNotePayload(from: remote)

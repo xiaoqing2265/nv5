@@ -67,6 +67,9 @@ public final class SyncCoordinator {
     private let store: NoteStore
     private let database: Database
     private let crypto: CryptoEngine?
+    /// 同步前 flush 编辑器未保存内容的钩子（App 注入）。确保所有同步——尤其【后台周期同步】——
+    /// 先把编辑器内存中未提交的编辑落到 DB，避免被远端下行覆盖而静默丢失。
+    private let preSyncFlush: (() async -> Void)?
 
     private var pollTask: Task<Void, Never>?
     private var settingsObserverTask: Task<Void, Never>?
@@ -75,11 +78,12 @@ public final class SyncCoordinator {
     private var consecutiveFailures: Int = 0
     private(set) var localSnapshotReadCount: Int = 0
 
-    public init(client: any WebDAVClientProtocol, store: NoteStore, database: Database, crypto: CryptoEngine? = nil) {
+    public init(client: any WebDAVClientProtocol, store: NoteStore, database: Database, crypto: CryptoEngine? = nil, preSyncFlush: (() async -> Void)? = nil) {
         self.client = client
         self.store = store
         self.database = database
         self.crypto = crypto
+        self.preSyncFlush = preSyncFlush
         startPeriodicSync()
         observeSettingsChanges()
     }
@@ -91,6 +95,9 @@ public final class SyncCoordinator {
 
     private func startPeriodicSync() {
         pollTask?.cancel()
+        let autoSyncEnabled = UserDefaults.standard.object(forKey: "autoSync")
+                                  .flatMap { $0 as? Bool } ?? true
+        guard autoSyncEnabled else { return }
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 let interval: TimeInterval
@@ -151,6 +158,10 @@ public final class SyncCoordinator {
     private func performSync() async throws {
         status = .syncing
         defer { if case .syncing = status { status = .idle } }
+
+        // 同步前先 flush 编辑器：把内存中未提交的编辑落到 DB（覆盖所有同步入口，含后台周期同步），
+        // 否则正在编辑、未到自动保存防抖点的内容可能被远端下行覆盖而丢失。
+        await preSyncFlush?()
 
         do {
             print("[Sync] start")

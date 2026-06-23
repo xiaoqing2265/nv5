@@ -68,9 +68,12 @@ struct SettingsNavigationView: View {
 struct GeneralSettingsNew: View {
     @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.system.rawValue
     @AppStorage("launchAtStartup") private var launchAtStartup: Bool = false
-    @AppStorage("restoreWindowState") private var restoreWindowState: Bool = true
     @AppStorage("closeWindowToQuit") private var closeWindowToQuit: Bool = false
-    @AppStorage("minimizeToTray") private var minimizeToTray: Bool = false
+    @EnvironmentObject private var updaterController: UpdaterController
+
+    private var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
+    }
 
     private var appLanguage: Binding<AppLanguage> {
         Binding(
@@ -87,12 +90,10 @@ struct GeneralSettingsNew: View {
             Section("启动行为") {
                 Toggle("启动时显示窗口", isOn: .constant(true))
                     .disabled(true)
-                Toggle("恢复上次窗口状态", isOn: $restoreWindowState)
             }
 
             Section("窗口行为") {
                 Toggle("关闭窗口时退出程序", isOn: $closeWindowToQuit)
-                Toggle("最小化到托盘", isOn: $minimizeToTray)
             }
 
             Section("语言") {
@@ -117,12 +118,10 @@ struct GeneralSettingsNew: View {
                 HStack {
                     Text("版本")
                     Spacer()
-                    Text("0.9.0-rc1")
+                    Text(appVersion)
                         .foregroundStyle(.secondary)
                 }
-                Button("检查更新") {
-                    // TODO: 检查更新
-                }
+                CheckForUpdatesView(controller: updaterController)
             }
         }
         .formStyle(.grouped)
@@ -246,7 +245,6 @@ struct EditorBehaviorSettingsNew: View {
     @AppStorage("tabKeyBehavior") private var tabBehaviorRaw: String = TabKeyBehavior.indent.rawValue
     @AppStorage("enableSpellCheck") private var enableSpellCheck: Bool = true
     @AppStorage("autoSaveInterval") private var autoSaveInterval: Double = 30
-    @AppStorage("preserveFormatting") private var preserveFormatting: Bool = true
     @AppStorage("makeLinksClickable") private var makeLinksClickable: Bool = true
 
     private var tabBehavior: Binding<TabKeyBehavior> {
@@ -268,7 +266,6 @@ struct EditorBehaviorSettingsNew: View {
 
             Section("编辑体验") {
                 Toggle("键入时检查拼写", isOn: $enableSpellCheck)
-                Toggle("复制时保留基本样式", isOn: $preserveFormatting)
                 Toggle("链接可点击", isOn: $makeLinksClickable)
             }
 
@@ -292,22 +289,18 @@ struct EditorBehaviorSettingsNew: View {
 
 // MARK: - 笔记设置
 struct NotesSettingsNew: View {
-    @AppStorage("defaultNoteFormat") private var defaultFormat: String = "markdown"
     @AppStorage("autoSelectRelatedNote") private var autoSelectRelatedNote: Bool = true
     @AppStorage("confirmDelete") private var confirmDelete: Bool = true
     @AppStorage("showLabelCount") private var showLabelCount: Bool = true
 
     var body: some View {
         Form {
-            Section("笔记格式") {
-                Picker("默认格式", selection: $defaultFormat) {
-                    Text("Markdown").tag("markdown")
-                    Text("纯文本").tag("plaintext")
-                }
-            }
-
             Section("笔记行为") {
-                Toggle("搜索时自动选择相关笔记", isOn: $autoSelectRelatedNote)
+                HStack {
+                    Toggle("搜索时自动选择相关笔记", isOn: $autoSelectRelatedNote)
+                        .disabled(true)
+                    Text("即将推出").font(.caption).foregroundStyle(.secondary)
+                }
                 Toggle("删除笔记时需要确认", isOn: $confirmDelete)
             }
 

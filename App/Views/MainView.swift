@@ -71,13 +71,6 @@ struct MainView: View {
                     visibility = new ? .all : .doubleColumn
                 }
             }
-            .onChange(of: overlayManager.isActive(.commandPalette)) { _, isActive in
-                if isActive {
-                    PaletteWindowManager.shared.show(coordinator: coordinator, focusCoordinator: focusCoordinator)
-                } else {
-                    PaletteWindowManager.shared.hide()
-                }
-            }
             .onChange(of: coordinator.isFullScreenEditor) { _, newValue in
                 withAnimation {
                     visibility = newValue ? .detailOnly : .all

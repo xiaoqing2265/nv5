@@ -5,9 +5,18 @@ enum TextDecoratorPipeline {
         storage.beginEditing()
         defer { storage.endEditing() }
 
+        let fgColor: NSColor = {
+            let key = UserDefaults.standard.string(forKey: "colorTheme") ?? "default"
+            if key == "default" { return .labelColor }
+            if let theme = defaultColorThemes[key] {
+                return NSColor(theme.textColor)
+            }
+            return .labelColor
+        }()
+
         let fullRange = NSRange(location: 0, length: storage.length)
         storage.addAttribute(.font, value: NSFont.systemFont(ofSize: 14), range: fullRange)
-        storage.addAttribute(.foregroundColor, value: NSColor.labelColor, range: fullRange)
+        storage.addAttribute(.foregroundColor, value: fgColor, range: fullRange)
         storage.removeAttribute(.strikethroughStyle, range: fullRange)
         storage.removeAttribute(.link, range: fullRange)
         storage.removeAttribute(.underlineStyle, range: fullRange)
@@ -19,6 +28,9 @@ enum TextDecoratorPipeline {
 
     static func runAll(on storage: NSTextStorage) {
         runInteractive(on: storage)
+        let makeLinks = UserDefaults.standard.object(forKey: "makeLinksClickable")
+                            .flatMap { $0 as? Bool } ?? true
+        guard makeLinks else { return }
         storage.beginEditing()
         defer { storage.endEditing() }
         LinkDecorator.decorate(storage)

@@ -66,7 +66,12 @@ final class AppCoordinator {
         }
         let client = WebDAVClient(config: credentials.config, password: credentials.password)
         let syncCrypto = try? CryptoEngine(base64Key: credentials.syncMasterKey)
-        self.sync = SyncCoordinator(client: client, store: store, database: database, crypto: syncCrypto)
+        // 注入 flush 钩子：所有同步（含后台周期同步）开始前先把编辑器未保存内容落到 DB，
+        // 避免正在编辑、未到防抖点的内容被远端下行覆盖丢失。
+        self.sync = SyncCoordinator(
+            client: client, store: store, database: database, crypto: syncCrypto,
+            preSyncFlush: { await MainWindowController.shared.flushActiveEditor() }
+        )
     }
 
     private func registerHotKey() {
@@ -128,6 +133,17 @@ final class AppCoordinator {
         fc.focus(.searchField)
     }
 
+    /// 进入命令模式：在搜索框预填 `>` 前缀并聚焦，触发 NoteListColumn 的命令模式分支。
+    /// Cmd+Shift+B 调用此方法，取代原先打开 PaletteWindowManager 的行为。
+    func enterCommandMode(focusCoordinator: FocusCoordinator) {
+        if !typedQuery.hasPrefix(">") {
+            typedQuery = ">"
+            query = ">"
+        }
+        focusCoordinator.focus(.searchField)
+        MainWindowController.shared.focusSearchField()
+    }
+
     func focusEditor() {
         assert(focusCoordinator != nil, "FocusCoordinator unbound")
         guard let fc = focusCoordinator else {
@@ -167,6 +183,17 @@ final class AppCoordinator {
 
     func deleteCurrentNote() {
         guard let id = selectedNoteID else { return }
+        let shouldConfirm = UserDefaults.standard.object(forKey: "confirmDelete")
+                                .flatMap { $0 as? Bool } ?? true
+        if shouldConfirm {
+            let alert = NSAlert()
+            alert.messageText = "确认删除笔记？"
+            alert.informativeText = "删除后无法恢复。"
+            alert.addButton(withTitle: "删除")
+            alert.addButton(withTitle: "取消")
+            alert.alertStyle = .warning
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+        }
         Task {
             do {
                 try await store.softDelete(id: id)

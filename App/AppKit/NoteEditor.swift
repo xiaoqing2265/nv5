@@ -41,12 +41,17 @@ struct NoteEditor: NSViewRepresentable {
             textView.defaultParagraphStyle = ps
         }
         let themeKey = UserDefaults.standard.string(forKey: "colorTheme") ?? "default"
+        let newBG: NSColor
         if themeKey != "default", let theme = defaultColorThemes[themeKey] {
-            textView.backgroundColor = NSColor(theme.backgroundColor)
-            textView.drawsBackground = true
+            newBG = NSColor(theme.backgroundColor)
         } else {
+            newBG = .textBackgroundColor
+        }
+        if !textView.backgroundColor.isEqual(newBG) {
+            textView.backgroundColor = newBG
+        }
+        if !textView.drawsBackground {
             textView.drawsBackground = true
-            textView.backgroundColor = .textBackgroundColor
         }
     }
 
@@ -136,14 +141,16 @@ struct NoteEditor: NSViewRepresentable {
                 }
             }
         } else {
-            // 笔记未切换：始终重绘高亮（让黄色标记随正文实时同步），
-            // 但只有当检索词【实际变化】时才跳转选区——编辑过程中的重渲染（自动保存、
-            // 状态刷新等）检索词不变，绝不能把光标拉回匹配处并整段选中，否则按 delete 误删。
+            // 笔记未切换：检索词变化时才重绘高亮——编辑过程中的重渲染（自动保存、
+            // 状态刷新等）检索词不变，跳过 applyHighlight 避免不必要的 layoutManager
+            // 属性写入触发重绘（闪动根因）。
             let queryChanged = (context.coordinator.lastHighlightQuery != highlightQuery)
-            let firstMatchRange = context.coordinator.applyHighlight(query: highlightQuery)
-            if queryChanged && !highlightQuery.isEmpty && firstMatchRange.location != NSNotFound {
-                textView.setSelectedRange(firstMatchRange)
-                textView.scrollRangeToVisible(firstMatchRange)
+            if queryChanged {
+                let firstMatchRange = context.coordinator.applyHighlight(query: highlightQuery)
+                if !highlightQuery.isEmpty && firstMatchRange.location != NSNotFound {
+                    textView.setSelectedRange(firstMatchRange)
+                    textView.scrollRangeToVisible(firstMatchRange)
+                }
             }
         }
 
@@ -156,7 +163,9 @@ struct NoteEditor: NSViewRepresentable {
         context.coordinator.lastFocusRequest = focusRequest
 
         applyAppearance(to: textView)
-        textView.isContinuousSpellCheckingEnabled = spellCheckEnabled
+        if textView.isContinuousSpellCheckingEnabled != spellCheckEnabled {
+            textView.isContinuousSpellCheckingEnabled = spellCheckEnabled
+        }
     }
 
     func makeCoordinator() -> Coordinator {
